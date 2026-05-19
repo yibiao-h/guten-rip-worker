@@ -1,0 +1,3 @@
+[submodule "gutenprint"]
+	path = gutenprint
+	url = https://github.com/yibiao-h/gutenprint.git
