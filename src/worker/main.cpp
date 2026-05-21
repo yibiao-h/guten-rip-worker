@@ -7,7 +7,9 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -28,9 +30,27 @@ void setEnv(const char* name, const std::filesystem::path& value)
 #endif
 }
 
+bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
+{
+    const std::filesystem::path escp2 = dataPath / "printers" / "escp2.xml";
+    if (!std::filesystem::exists(escp2)) {
+        return false;
+    }
+
+    std::ifstream in(escp2, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    return text.find("escp2-l18050-86") != std::string::npos &&
+           text.find("escp2-et8550-86") != std::string::npos;
+}
+
 void configureGutenprintDataPath(const char* executablePath)
 {
-    if (envIsSet("STP_DATA_PATH")) {
+    if (envIsSet("STP_DATA_PATH") &&
+        xmlDataPathContainsLocalDrivers(std::getenv("STP_DATA_PATH"))) {
         return;
     }
 
@@ -52,7 +72,7 @@ void configureGutenprintDataPath(const char* executablePath)
     };
 
     for (const auto& candidate : candidates) {
-        if (std::filesystem::exists(candidate / "printers" / "escp2.xml")) {
+        if (xmlDataPathContainsLocalDrivers(candidate)) {
             setEnv("STP_DATA_PATH", candidate);
             std::cout << "STP_DATA_PATH=" << candidate.string() << '\n';
             return;
