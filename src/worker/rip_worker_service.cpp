@@ -25,6 +25,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 extern "C" {
 
 typedef unsigned long model_cap_t;
@@ -290,6 +294,18 @@ bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
            text.find("escp2-et8550-86") != std::string::npos;
 }
 
+std::filesystem::path getExecutableDir()
+{
+#ifdef _WIN32
+    wchar_t buffer[MAX_PATH];
+    const DWORD len = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    if (len > 0 && len < MAX_PATH) {
+        return std::filesystem::path(buffer).parent_path();
+    }
+#endif
+    return std::filesystem::current_path();
+}
+
 void configureGutenprintDataPath()
 {
     if (envIsSet("STP_DATA_PATH") &&
@@ -298,13 +314,20 @@ void configureGutenprintDataPath()
     }
 
     const std::filesystem::path currentDir = std::filesystem::current_path();
+    const std::filesystem::path executableDir = getExecutableDir();
     const std::filesystem::path candidates[] = {
         currentDir.parent_path() / "xml",
+        executableDir.parent_path() / "xml",
         currentDir / "xml",
+        executableDir / "xml",
         currentDir / "gutenprint" / "src" / "xml",
         currentDir.parent_path() / "gutenprint" / "src" / "xml",
         currentDir / "worker" / "gutenprint" / "src" / "xml",
         currentDir.parent_path() / "worker" / "gutenprint" / "src" / "xml",
+        executableDir / "gutenprint" / "src" / "xml",
+        executableDir.parent_path() / "gutenprint" / "src" / "xml",
+        executableDir / "worker" / "gutenprint" / "src" / "xml",
+        executableDir.parent_path() / "worker" / "gutenprint" / "src" / "xml",
     };
 
     for (const auto& candidate : candidates) {
@@ -1142,6 +1165,26 @@ RipWorkerService::RipWorkerService()
     configureGutenprintDebugFlags();
     configureGutenprintDataPath();
     stp_init();
+
+    const int modelCount = stp_printer_model_count();
+    if (modelCount == 0) {
+        std::cerr << "[guten-rip-worker] WARNING: stp_init completed but no printer models found."
+                  << " STP_DATA_PATH=" << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "(not set)")
+                  << std::endl;
+    } else {
+        int catalogCount = 0;
+        for (int i = 0; i < modelCount; ++i) {
+            if (isCatalogPrinter(stp_get_printer_by_index(i))) {
+                ++catalogCount;
+            }
+        }
+        if (catalogCount == 0) {
+            std::cerr << "[guten-rip-worker] WARNING: stp_init found " << modelCount
+                      << " printer models but no 9xx catalog drivers."
+                      << " STP_DATA_PATH=" << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "(not set)")
+                      << std::endl;
+        }
+    }
 }
 
 RipWorkerService::~RipWorkerService()
@@ -1158,6 +1201,11 @@ grpc::Status RipWorkerService::GetCapabilities(grpc::ServerContext* context,
     response->set_worker_name("guten-rip-worker");
     gutenrip::worker::PrintDriverCatalog catalog;
     fillPrintDriverCatalog(&catalog);
+    if (catalog.drivers_size() == 0) {
+        std::cerr << "[guten-rip-worker] GetCapabilities: no catalog drivers, reporting empty default."
+                  << " STP_DATA_PATH=" << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "(not set)")
+                  << std::endl;
+    }
     if (catalog.drivers_size() > 0) {
         response->set_default_printer_driver(catalog.drivers(0).driver());
     }
@@ -1321,7 +1369,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     const stp_dimension_t pageHeight = mmToPoints(pageMMFromRequest(request->page_height_mm(),
                                                                     request->page_height_points(),
                                                                     297.0));
-    constexpr stp_dimension_t minMargin = 9.0;
+    constexpr stp_dimension_t minMargin = 0.0;
     stp_set_page_width(vars, pageWidth);
     stp_set_page_height(vars, pageHeight);
     stp_set_left(vars, std::max<stp_dimension_t>(minMargin, mmToPoints(layoutContext.imageXMM)));
@@ -1591,7 +1639,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     const stp_dimension_t pageHeight = mmToPoints(pageMMFromRequest(request.page_height_mm(),
                                                                     request.page_height_points(),
                                                                     297.0));
-    constexpr stp_dimension_t minMargin = 9.0;
+    constexpr stp_dimension_t minMargin = 0.0;
     stp_set_page_width(vars, pageWidth);
     stp_set_page_height(vars, pageHeight);
     stp_set_left(vars, std::max<stp_dimension_t>(minMargin, mmToPoints(layoutContext.imageXMM)));
