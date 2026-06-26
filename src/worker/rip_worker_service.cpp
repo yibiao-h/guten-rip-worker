@@ -1258,6 +1258,8 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     const double rawYellowDensity = boundedDoubleSetting(request, "YellowDensity", 1.0, 0.0, 1.0);
     const double rawBlackDensity = boundedDoubleSetting(request, "BlackDensity", 1.0, 0.0, 1.0);
     const double rawGlossDensity = boundedDoubleSetting(request, "GlossDensity", 1.0, 0.0, 1.0);
+    const double rawEscIFeatherEdge =
+        boundedDoubleSetting(request, "EscIFeatherEdge", 0.95, 0.0, 1.0);
     const std::string colorCorrection = stringSetting(request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(request));
     setStringParameter(vars, "InputSlot", stringSetting(request, "InputSlot", "Rear"));
@@ -1283,6 +1285,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     setFloatParameter(vars, "YellowDensity", rawYellowDensity);
     setFloatParameter(vars, "BlackDensity", rawBlackDensity);
     setFloatParameter(vars, "GlossDensity", rawGlossDensity);
+    setFloatParameter(vars, "EscIFeatherEdge", rawEscIFeatherEdge);
     setFloatParameter(vars, "Brightness", doubleSetting(request, "Brightness", 1.0));
     setFloatParameter(vars, "Contrast", doubleSetting(request, "Contrast", 1.0));
     setFloatParameter(vars, "Saturation", doubleSetting(request, "Saturation", 1.0));
@@ -1349,6 +1352,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
               << " cmykDensity=" << rawCyanDensity << "," << rawMagentaDensity
               << "," << rawYellowDensity << "," << rawBlackDensity
               << " glossDensity=" << rawGlossDensity
+              << " escIFeatherEdge=" << rawEscIFeatherEdge
               << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
               << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
               << " rawChannels=" << layoutContext.rawChannelCount
@@ -1528,6 +1532,8 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     const double rawYellowDensity = boundedDoubleSetting(&request, "YellowDensity", 1.0, 0.0, 1.0);
     const double rawBlackDensity = boundedDoubleSetting(&request, "BlackDensity", 1.0, 0.0, 1.0);
     const double rawGlossDensity = boundedDoubleSetting(&request, "GlossDensity", 1.0, 0.0, 1.0);
+    const double rawEscIFeatherEdge =
+        boundedDoubleSetting(&request, "EscIFeatherEdge", 0.95, 0.0, 1.0);
     const std::string colorCorrection = stringSetting(&request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(&request));
     setStringParameter(vars, "InputSlot", stringSetting(&request, "InputSlot", "Rear"));
@@ -1553,6 +1559,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     setFloatParameter(vars, "YellowDensity", rawYellowDensity);
     setFloatParameter(vars, "BlackDensity", rawBlackDensity);
     setFloatParameter(vars, "GlossDensity", rawGlossDensity);
+    setFloatParameter(vars, "EscIFeatherEdge", rawEscIFeatherEdge);
     setFloatParameter(vars, "Brightness", doubleSetting(&request, "Brightness", 1.0));
     setFloatParameter(vars, "Contrast", doubleSetting(&request, "Contrast", 1.0));
     setFloatParameter(vars, "Saturation", doubleSetting(&request, "Saturation", 1.0));
@@ -1597,6 +1604,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
               << " ditherAlgorithm=" << ditherAlgorithm
               << " density=" << rawDensity
               << " inkLimit=" << rawInkLimit
+              << " escIFeatherEdge=" << rawEscIFeatherEdge
               << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
               << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
               << " requestedInputImageType=" << requestedInputImageType
@@ -1650,6 +1658,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                  ", YellowDensity=" + std::to_string(rawYellowDensity) +
                  ", BlackDensity=" + std::to_string(rawBlackDensity) +
                  ", GlossDensity=" + std::to_string(rawGlossDensity) +
+                 ", EscIFeatherEdge=" + std::to_string(rawEscIFeatherEdge) +
                  ", source=" + layoutContext.sourceInputImageType + ".",
              outputCtx.bytesWritten);
     return grpc::Status::OK;
