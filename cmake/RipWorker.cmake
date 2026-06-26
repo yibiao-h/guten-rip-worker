@@ -149,6 +149,23 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         endif()
 
         add_test(NAME rip_worker_client COMMAND test_rip_worker_client)
+
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_esc_i_feather.cpp")
+            add_executable(test_esc_i_feather
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_esc_i_feather.cpp"
+            )
+            target_compile_definitions(test_esc_i_feather PRIVATE
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+            )
+            target_include_directories(test_esc_i_feather PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+            )
+            target_link_libraries(test_esc_i_feather PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME esc_i_feather COMMAND test_esc_i_feather)
+        endif()
     elseif(BUILD_CORE_TESTS)
         message(STATUS "Skipping test_rip_worker_client: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
