@@ -25,6 +25,7 @@ struct ComposeOptions {
     std::uint8_t sourceLightMagentaWhiteColor = 0x11;
     std::uint8_t lightCyanWhiteColor = 0x12;
     std::uint8_t lightMagentaWhiteColor = 0x11;
+    std::vector<int> baseChannelColors;
     int nozzles = 86;
     int nozzleSeparation = 2;
     int baseSeparation = 360;

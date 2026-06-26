@@ -1,13 +1,8 @@
-#include "rip_worker_service.h"
+﻿#include "rip_worker_service.h"
 
 #include "rip/raw_interop_image.h"
 #include "rip/prn_stream_rewriter.h"
 #include "rip/white_plate_generator.h"
-
-#include <QImage>
-#include <QImageReader>
-#include <QString>
-#include <QtGlobal>
 
 #include <algorithm>
 #include <cmath>
@@ -145,7 +140,7 @@ struct OutputContext {
     std::ofstream out;
     grpc::ServerReaderWriter<gutenrip::worker::RenderPlaneStreamResponse,
                              gutenrip::worker::RenderPlaneStreamRequest>* stream = nullptr;
-    gutenrip::rip::PrnStreamRewriter* rewriter = nullptr;
+    yink::rip::PrnStreamRewriter* rewriter = nullptr;
     std::size_t bytesWritten = 0;
     bool writeFailed = false;
 };
@@ -167,15 +162,10 @@ struct LayoutImageContext {
     bool isWhite = false;
     bool hasSourceImage = false;
     std::size_t rawChannelCount = 0;
-    std::vector<std::uint8_t> rawPixels;
-    bool sourceHasAlpha = false;
+    std::vector<std::uint16_t> rawPixels;
     int sourceWidth = 0;
     int sourceHeight = 0;
     std::string sourceInputImageType = "RGB";
-    std::string colorInputImageType = "RGB";
-    std::vector<std::uint8_t> sourceRgba;
-    std::vector<std::uint8_t> sourceCmyk;
-    std::vector<std::uint8_t> sourceWhitePlate;
     bool whiteRgbInput = false;
     bool whiteRawInput = false;
     std::size_t whiteRawChannelCount = 1;
@@ -185,57 +175,6 @@ struct LayoutImageContext {
                              gutenrip::worker::RenderPlaneStreamRequest>* stream = nullptr;
     std::string streamError;
 };
-
-std::uint8_t luminance(std::uint8_t r, std::uint8_t g, std::uint8_t b)
-{
-    return static_cast<std::uint8_t>(
-        std::clamp<int>(static_cast<int>(std::lround(0.2126 * r + 0.7152 * g + 0.0722 * b)), 0, 255));
-}
-
-bool isCmykImage(const QImage& image)
-{
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-    return image.format() == QImage::Format_CMYK8888;
-#else
-    (void)image;
-    return false;
-#endif
-}
-
-bool isGrayscaleImage(const QImage& image)
-{
-    switch (image.format()) {
-    case QImage::Format_Mono:
-    case QImage::Format_MonoLSB:
-    case QImage::Format_Grayscale8:
-    case QImage::Format_Grayscale16:
-        return true;
-    default:
-        return !image.hasAlphaChannel() && image.isGrayscale();
-    }
-}
-
-std::string detectedInputImageType(const QImage& image)
-{
-    if (isCmykImage(image)) {
-        return "CMYK";
-    }
-    if (isGrayscaleImage(image)) {
-        return "Grayscale";
-    }
-    return "RGB";
-}
-
-bool supportedColorInputImageType(const std::string& value)
-{
-    return value == "RGB" || value == "CMYK" || value == "KCMY" ||
-           value == "CMY" || value == "Grayscale" || value == "Whitescale";
-}
-
-bool isAutoInputImageType(const std::string& value)
-{
-    return value.empty() || value == "Auto" || value == "auto";
-}
 
 std::size_t colorChannelCount(const std::string& inputImageType)
 {
@@ -388,8 +327,22 @@ std::string defaultCatalogDriver()
 
 int escIColorForSubchannel(const physical_subchannel_t& subchannel)
 {
-    return static_cast<int>(subchannel.color) |
-           (static_cast<int>(subchannel.subchannel) << 4);
+    const int color = static_cast<int>(subchannel.color);
+    if (subchannel.subchannel < 0) {
+        return color;
+    }
+    return color | (static_cast<int>(subchannel.subchannel) << 4);
+}
+
+bool endsWith(const char* value, const char* suffix)
+{
+    if (!value || !suffix) {
+        return false;
+    }
+    const std::size_t valueLen = std::strlen(value);
+    const std::size_t suffixLen = std::strlen(suffix);
+    return valueLen >= suffixLen &&
+           std::strcmp(value + valueLen - suffixLen, suffix) == 0;
 }
 
 void updateWhiteEscColor(const physical_subchannel_t& subchannel,
@@ -402,7 +355,8 @@ void updateWhiteEscColor(const physical_subchannel_t& subchannel,
     const int escColor = escIColorForSubchannel(subchannel);
     if (name == "LightCyanWhite" || name == "PhotoblackWhite") {
         profile->set_primary_white_esc_color(escColor);
-    } else if (name == "LightMagentaWhite" || name == "GrayWhite") {
+    } else if (name == "LightMagentaWhite" || name == "MagentaWhite" ||
+               name == "GrayWhite") {
         profile->set_secondary_white_esc_color(escColor);
     }
 }
@@ -436,6 +390,72 @@ void fillWhiteEscColors(const stp_vars_t* vars,
     for (unsigned int i = 0; i < inkList->n_inks; ++i) {
         scanInkNameWhiteEscColors(inkList->inknames[i], profile);
     }
+}
+
+void addBaseEscColor(const ink_channel_t& channel,
+                     bool colorOffset,
+                     gutenrip::worker::PrintDriverProfile* profile)
+{
+    if (!profile || !endsWith(channel.name, "_base")) {
+        return;
+    }
+    for (unsigned int i = 0; i < channel.n_subchannels; ++i) {
+        const int escColor = escIColorForSubchannel(channel.subchannels[i]);
+        if (colorOffset) {
+            profile->add_color_offset_base_esc_colors(escColor);
+        } else {
+            profile->add_white_offset_base_esc_colors(escColor);
+        }
+    }
+}
+
+void scanInkNameBaseEscColors(const inkname_t& inkName,
+                              gutenrip::worker::PrintDriverProfile* profile)
+{
+    if (!inkName.name) {
+        return;
+    }
+    const bool colorOffset = std::strcmp(inkName.name, "ColorOffset6") == 0;
+    const bool whiteOffset = std::strcmp(inkName.name, "WhiteOffset6") == 0;
+    if (!colorOffset && !whiteOffset) {
+        return;
+    }
+    for (unsigned int i = 0; i < inkName.channel_count; ++i) {
+        addBaseEscColor(inkName.channels[i], colorOffset, profile);
+    }
+    for (unsigned int i = 0; i < inkName.aux_channel_count; ++i) {
+        addBaseEscColor(inkName.aux_channels[i], colorOffset, profile);
+    }
+}
+
+void scanBaseEscColorsForInkSet(stp_vars_t* vars,
+                                const char* inkSet,
+                                const char* inkType,
+                                gutenrip::worker::PrintDriverProfile* profile)
+{
+    if (!vars || !inkSet || !inkType || !profile) {
+        return;
+    }
+    stp_set_string_parameter(vars, "MediaType", inkSet);
+    stp_set_string_parameter(vars, "InkSet", inkSet);
+    stp_set_string_parameter(vars, "InkType", inkType);
+    const inklist_t* inkList = stpi_escp2_inklist(vars);
+    if (!inkList) {
+        return;
+    }
+    for (unsigned int i = 0; i < inkList->n_inks; ++i) {
+        scanInkNameBaseEscColors(inkList->inknames[i], profile);
+    }
+}
+
+void fillBaseEscColors(stp_vars_t* vars,
+                       gutenrip::worker::PrintDriverProfile* profile)
+{
+    scanBaseEscColorsForInkSet(vars, "ColorOffset", "ColorOffset6", profile);
+    scanBaseEscColorsForInkSet(vars, "WhiteOffset", "WhiteOffset6", profile);
+    stp_set_string_parameter(vars, "MediaType", "ColorOffset");
+    stp_set_string_parameter(vars, "InkSet", "ColorOffset");
+    stp_set_string_parameter(vars, "InkType", "ColorOffset6");
 }
 
 void addResolutionProfile(stp_vars_t* vars,
@@ -529,6 +549,7 @@ void addCatalogPrinter(const stp_printer_t* printer,
                                         escp2->nozzles);
     }
     fillWhiteEscColors(vars, profile);
+    fillBaseEscColors(vars, profile);
     fillResolutions(vars, profile);
 
     stp_vars_destroy(vars);
@@ -617,64 +638,15 @@ LayoutImageContext layoutFromRequest(const gutenrip::worker::RenderPlaneRequest*
     return context;
 }
 
-bool loadSourceImage(const std::string& inputPath, LayoutImageContext* context, std::string* error)
-{
-    if (!context || inputPath.empty()) {
-        return false;
-    }
-
-    QImageReader reader(QString::fromStdString(inputPath));
-    reader.setAutoTransform(true);
-
-    QImage image = reader.read();
-    if (image.isNull()) {
-        if (error) {
-            const std::string detail = reader.errorString().toStdString();
-            *error = "Unable to load source image: " + inputPath;
-            if (!detail.empty()) {
-                *error += " (" + detail + ")";
-            }
-        }
-        return false;
-    }
-
-    context->sourceHasAlpha = image.hasAlphaChannel();
-    context->sourceInputImageType = detectedInputImageType(image);
-    if (context->sourceInputImageType == "CMYK") {
-        context->sourceCmyk.resize(static_cast<std::size_t>(image.width()) *
-                                   static_cast<std::size_t>(image.height()) * 4u);
-        for (int y = 0; y < image.height(); ++y) {
-            const auto* src = image.constScanLine(y);
-            auto* dst = context->sourceCmyk.data() +
-                        static_cast<std::size_t>(y) * static_cast<std::size_t>(image.width()) * 4u;
-            std::memcpy(dst, src, static_cast<std::size_t>(image.width()) * 4u);
-        }
-    }
-    image = image.convertToFormat(QImage::Format_RGBA8888);
-    context->sourceWidth = image.width();
-    context->sourceHeight = image.height();
-    context->sourceRgba.resize(static_cast<std::size_t>(context->sourceWidth) *
-                               static_cast<std::size_t>(context->sourceHeight) * 4u);
-    for (int y = 0; y < context->sourceHeight; ++y) {
-        const auto* src = image.constScanLine(y);
-        auto* dst = context->sourceRgba.data() +
-                    static_cast<std::size_t>(y) *
-                        static_cast<std::size_t>(context->sourceWidth) * 4u;
-        std::memcpy(dst, src, static_cast<std::size_t>(context->sourceWidth) * 4u);
-    }
-    context->hasSourceImage = true;
-    return true;
-}
-
 bool loadPreparedRawImage(const std::string& inputPath, LayoutImageContext* context, std::string* error)
 {
     if (!context || inputPath.empty()) {
         return false;
     }
 
-    gutenrip::rip::RawInteropImage image;
+    yink::rip::RawInteropImage image;
     std::string readError;
-    if (!gutenrip::rip::readRawInteropImage(inputPath, &image, &readError)) {
+    if (!yink::rip::readRawInteropImage(inputPath, &image, &readError)) {
         if (error) {
             *error = readError.empty()
                 ? "Unable to load raw interop image: " + inputPath
@@ -822,12 +794,12 @@ std::string normalizedRawInkTypeFor(const std::string& inkType)
     return "ColorOffset6";
 }
 
-gutenrip::rip::ComposeOptions composeOptionsFromProto(const gutenrip::worker::ComposeSettings& source)
+yink::rip::ComposeOptions composeOptionsFromProto(const gutenrip::worker::ComposeSettings& source)
 {
-    gutenrip::rip::ComposeOptions options;
+    yink::rip::ComposeOptions options;
     options.layerOrder = source.layer_order() == "WhiteOverColor"
-        ? gutenrip::rip::LayerOrder::WhiteOverColor
-        : gutenrip::rip::LayerOrder::WhiteUnderColor;
+        ? yink::rip::LayerOrder::WhiteOverColor
+        : yink::rip::LayerOrder::WhiteUnderColor;
     options.frontHalfPrintsFirst = source.front_half_prints_first();
     if (source.source_light_cyan_white_color() > 0) {
         options.sourceLightCyanWhiteColor =
@@ -851,6 +823,10 @@ gutenrip::rip::ComposeOptions composeOptionsFromProto(const gutenrip::worker::Co
     }
     if (source.base_separation() > 0) {
         options.baseSeparation = source.base_separation();
+    }
+    options.baseChannelColors.reserve(static_cast<std::size_t>(source.base_channel_colors_size()));
+    for (const int color : source.base_channel_colors()) {
+        options.baseChannelColors.push_back(color);
     }
     return options;
 }
@@ -890,42 +866,21 @@ std::string rawDitherAlgorithmForDriver(const std::string& driver,
     return stringSetting(request, "DitherAlgorithm", "Adaptive");
 }
 
-gutenrip::rip::WhitePlateMode whitePlateModeFromString(const std::string& value)
+yink::rip::WhitePlateMode whitePlateModeFromString(const std::string& value)
 {
     if (value == "FillAll") {
-        return gutenrip::rip::WhitePlateMode::FillAll;
+        return yink::rip::WhitePlateMode::FillAll;
     }
     if (value == "GradientNegative") {
-        return gutenrip::rip::WhitePlateMode::GradientNegative;
+        return yink::rip::WhitePlateMode::GradientNegative;
     }
     if (value == "GradientPositive") {
-        return gutenrip::rip::WhitePlateMode::GradientPositive;
+        return yink::rip::WhitePlateMode::GradientPositive;
     }
     if (value == "Alpha") {
-        return gutenrip::rip::WhitePlateMode::Alpha;
+        return yink::rip::WhitePlateMode::Alpha;
     }
-    return gutenrip::rip::WhitePlateMode::AnyColoredPixel;
-}
-
-void buildSourceWhitePlate(const gutenrip::worker::RenderPlaneRequest* request,
-                           LayoutImageContext* context)
-{
-    if (!context || !context->hasSourceImage || context->sourceRgba.empty()) {
-        return;
-    }
-
-    gutenrip::rip::WhitePlateOptions options;
-    options.mode = whitePlateModeFromString(stringSetting(request, "WhitePlateMode", "AnyColoredPixel"));
-    options.removeWhiteBackground =
-        boolSetting(request, "RemoveWhiteBackground", true) && !context->sourceHasAlpha;
-    options.whiteBackgroundThreshold =
-        static_cast<std::uint8_t>(std::clamp(intSetting(request, "WhiteBackgroundThreshold", 245), 0, 255));
-
-    gutenrip::rip::WhitePlateGenerator generator;
-    context->sourceWhitePlate = generator.generateFromRgba(context->sourceRgba,
-                                                           context->sourceWidth,
-                                                           context->sourceHeight,
-                                                           options);
+    return yink::rip::WhitePlateMode::AnyColoredPixel;
 }
 
 void setStringParameter(stp_vars_t* vars, const char* key, const std::string& value)
@@ -990,37 +945,6 @@ void outputFunc(void* data, const char* buffer, std::size_t bytes)
     }
 }
 
-std::uint8_t compositeOnWhite(std::uint8_t channel, std::uint8_t alpha)
-{
-    const int inverseAlpha = 255 - static_cast<int>(alpha);
-    return static_cast<std::uint8_t>(
-        std::clamp((static_cast<int>(channel) * static_cast<int>(alpha) +
-                    255 * inverseAlpha + 127) / 255,
-                   0,
-                   255));
-}
-
-struct CmykPixel {
-    std::uint8_t c = 0;
-    std::uint8_t m = 0;
-    std::uint8_t y = 0;
-    std::uint8_t k = 0;
-};
-
-CmykPixel rgbToCmyk(std::uint8_t r, std::uint8_t g, std::uint8_t b)
-{
-    const int cPrime = 255 - static_cast<int>(r);
-    const int mPrime = 255 - static_cast<int>(g);
-    const int yPrime = 255 - static_cast<int>(b);
-    const int k = std::min(cPrime, std::min(mPrime, yPrime));
-    return {
-        static_cast<std::uint8_t>(cPrime - k),
-        static_cast<std::uint8_t>(mPrime - k),
-        static_cast<std::uint8_t>(yPrime - k),
-        static_cast<std::uint8_t>(k),
-    };
-}
-
 bool fillStreamLayoutRow(LayoutImageContext* context, unsigned char* data,
                          std::size_t byteLimit, int row)
 {
@@ -1078,13 +1002,14 @@ void fillLayoutRow(LayoutImageContext& context, unsigned char* data,
     const std::size_t channels = context.rawChannelCount > 0
         ? context.rawChannelCount
         : 1u;
-    const std::size_t rowBytes = static_cast<std::size_t>(context.imageWidth) * channels;
+    const std::size_t rowPixels = static_cast<std::size_t>(context.imageWidth) * channels;
+    const std::size_t rowBytes = rowPixels * sizeof(std::uint16_t);
     if (context.hasSourceImage && !context.rawPixels.empty()) {
-        const std::size_t offset = static_cast<std::size_t>(row) * rowBytes;
+        const std::size_t offset = static_cast<std::size_t>(row) * rowPixels;
         if (offset >= context.rawPixels.size()) {
             return;
         }
-        const std::size_t available = std::min(rowBytes, context.rawPixels.size() - offset);
+        const std::size_t available = std::min(rowBytes, (context.rawPixels.size() - offset) * sizeof(std::uint16_t));
         std::memcpy(data, context.rawPixels.data() + offset, std::min(byteLimit, available));
         return;
     }
@@ -1348,7 +1273,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     setStringParameter(vars, "InkType", inkType);
     setStringParameter(vars, "ColorCorrection", colorCorrection);
     setStringParameter(vars, "DitherAlgorithm", ditherAlgorithm);
-    setStringParameter(vars, "ChannelBitDepth", stringSetting(request, "ChannelBitDepth", "8"));
+    setStringParameter(vars, "ChannelBitDepth", stringSetting(request, "ChannelBitDepth", "16"));
     setStringParameter(vars, "PrintingDirection", stringSetting(request, "PrintingDirection", "Bidirectional"));
     setStringParameter(vars, "Weave", stringSetting(request, "Weave", "None"));
     setFloatParameter(vars, "Density", rawDensity);
@@ -1428,7 +1353,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
               << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
               << " rawChannels=" << layoutContext.rawChannelCount
               << " loadedSource=" << (loadedSource ? "true" : "false")
-              << " rawBytes=" << layoutContext.rawPixels.size()
+              << " rawPixels=" << layoutContext.rawPixels.size()
               << " pageMM=" << layoutContext.pageWidthMM << "x" << layoutContext.pageHeightMM
               << " imageMM=" << layoutContext.imageXMM << "," << layoutContext.imageYMM
               << "," << layoutContext.imageWidthMM << "x" << layoutContext.imageHeightMM
@@ -1618,7 +1543,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     setStringParameter(vars, "InkType", inkType);
     setStringParameter(vars, "ColorCorrection", colorCorrection);
     setStringParameter(vars, "DitherAlgorithm", ditherAlgorithm);
-    setStringParameter(vars, "ChannelBitDepth", stringSetting(&request, "ChannelBitDepth", "8"));
+    setStringParameter(vars, "ChannelBitDepth", stringSetting(&request, "ChannelBitDepth", "16"));
     setStringParameter(vars, "PrintingDirection", stringSetting(&request, "PrintingDirection", "Bidirectional"));
     setStringParameter(vars, "Weave", stringSetting(&request, "Weave", "None"));
     setFloatParameter(vars, "Density", rawDensity);
@@ -1647,7 +1572,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     stp_set_width(vars, std::max<stp_dimension_t>(1.0, mmToPoints(layoutContext.imageWidthMM)));
     stp_set_height(vars, std::max<stp_dimension_t>(1.0, mmToPoints(layoutContext.imageHeightMM)));
 
-    gutenrip::rip::PrnStreamRewriter rewriter(composeOptionsFromProto(start.compose()));
+    yink::rip::PrnStreamRewriter rewriter(composeOptionsFromProto(start.compose()));
     OutputContext outputCtx;
     outputCtx.stream = stream;
     outputCtx.rewriter = &rewriter;

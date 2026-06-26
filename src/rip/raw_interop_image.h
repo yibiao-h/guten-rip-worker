@@ -10,7 +10,8 @@ struct RawInteropImage {
     int width = 0;
     int height = 0;
     int channels = 0;
-    std::vector<std::uint8_t> pixels;
+    int bitsPerChannel = 16;
+    std::vector<std::uint16_t> pixels;
 };
 
 bool writeRawInteropImage(const std::string& path,

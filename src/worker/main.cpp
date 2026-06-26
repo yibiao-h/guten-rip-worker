@@ -2,9 +2,6 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <QCoreApplication>
-#include <QString>
-
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +9,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -56,22 +54,28 @@ void configureGutenprintDataPath(const char* executablePath)
 
     const std::filesystem::path executableDir = std::filesystem::absolute(executablePath).parent_path();
     const std::filesystem::path currentDir = std::filesystem::current_path();
-    const std::filesystem::path candidates[] = {
-        currentDir.parent_path() / "xml",
-        executableDir.parent_path() / "xml",
-        currentDir / "xml",
-        executableDir / "xml",
-        currentDir / "gutenprint" / "src" / "xml",
-        currentDir.parent_path() / "gutenprint" / "src" / "xml",
-        currentDir / "worker" / "gutenprint" / "src" / "xml",
-        currentDir.parent_path() / "worker" / "gutenprint" / "src" / "xml",
-        executableDir / "gutenprint" / "src" / "xml",
-        executableDir.parent_path() / "gutenprint" / "src" / "xml",
-        executableDir / "worker" / "gutenprint" / "src" / "xml",
-        executableDir.parent_path() / "worker" / "gutenprint" / "src" / "xml",
-    };
+    std::vector<std::filesystem::path> candidatesVec;
+    candidatesVec.push_back(currentDir.parent_path() / "xml");
+    candidatesVec.push_back(executableDir.parent_path() / "xml");
+    candidatesVec.push_back(currentDir / "xml");
+    candidatesVec.push_back(executableDir / "xml");
+    candidatesVec.push_back(currentDir / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(currentDir.parent_path() / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(currentDir / "worker" / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(currentDir.parent_path() / "worker" / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(executableDir / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(executableDir.parent_path() / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(executableDir / "worker" / "gutenprint" / "src" / "xml");
+    candidatesVec.push_back(executableDir.parent_path() / "worker" / "gutenprint" / "src" / "xml");
 
-    for (const auto& candidate : candidates) {
+    for (auto dir = executableDir; dir.has_parent_path() && dir != dir.parent_path(); dir = dir.parent_path()) {
+        candidatesVec.push_back(dir / "worker" / "gutenprint" / "src" / "xml");
+    }
+    for (auto dir = currentDir; dir.has_parent_path() && dir != dir.parent_path(); dir = dir.parent_path()) {
+        candidatesVec.push_back(dir / "worker" / "gutenprint" / "src" / "xml");
+    }
+
+    for (const auto& candidate : candidatesVec) {
         if (xmlDataPathContainsLocalDrivers(candidate)) {
             setEnv("STP_DATA_PATH", candidate);
             std::cout << "STP_DATA_PATH=" << candidate.string() << '\n';
@@ -82,38 +86,11 @@ void configureGutenprintDataPath(const char* executablePath)
     std::cerr << "STP_DATA_PATH is not set and xml was not found near the worker.\n";
 }
 
-QString pathToQString(const std::filesystem::path& path)
-{
-#ifdef _WIN32
-    return QString::fromStdWString(path.wstring());
-#else
-    return QString::fromStdString(path.string());
-#endif
-}
-
-void configureQtPluginPaths(const char* executablePath)
-{
-    const std::filesystem::path executableDir = std::filesystem::absolute(executablePath).parent_path();
-    const std::filesystem::path candidates[] = {
-        executableDir,
-        executableDir / "plugins",
-        executableDir.parent_path() / "plugins",
-    };
-
-    for (const auto& candidate : candidates) {
-        if (std::filesystem::exists(candidate / "imageformats")) {
-            QCoreApplication::addLibraryPath(pathToQString(candidate));
-        }
-    }
-}
-
 } // namespace
 
 int main(int argc, char** argv)
 {
-    QCoreApplication app(argc, argv);
     const std::string address = argc > 1 ? argv[1] : "127.0.0.1:50051";
-    configureQtPluginPaths(argv[0]);
     configureGutenprintDataPath(argv[0]);
 
     RipWorkerService service;

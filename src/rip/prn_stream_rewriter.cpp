@@ -49,6 +49,11 @@ bool isBaseChannelForLayer(int color, const ComposeOptions& options)
     if (isColorSourceAnchorColor(color)) {
         return false;
     }
+    if (!options.baseChannelColors.empty()) {
+        return std::find(options.baseChannelColors.begin(),
+                         options.baseChannelColors.end(),
+                         color) != options.baseChannelColors.end();
+    }
     const bool whiteChannel = isWhiteSourceColor(color, options);
     return options.layerOrder == LayerOrder::WhiteUnderColor ? whiteChannel : !whiteChannel;
 }

@@ -8,7 +8,8 @@
 namespace gutenrip::rip {
 namespace {
 
-constexpr std::array<char, 8> kMagic{{'G', 'R', 'R', 'A', 'W', '0', '0', '1'}};
+constexpr std::array<char, 8> kMagicV1{{'G', 'R', 'R', 'A', 'W', '0', '0', '1'}};
+constexpr std::array<char, 8> kMagicV2{{'G', 'R', 'R', 'A', 'W', '0', '0', '2'}};
 constexpr int kMaxChannels = 40;
 
 void setError(std::string* error, const std::string& message)
@@ -82,13 +83,13 @@ bool writeRawInteropImage(const std::string& path,
         return false;
     }
 
-    out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
+    out.write(kMagicV2.data(), static_cast<std::streamsize>(kMagicV2.size()));
     writeU32(out, static_cast<std::uint32_t>(image.width));
     writeU32(out, static_cast<std::uint32_t>(image.height));
     writeU32(out, static_cast<std::uint32_t>(image.channels));
-    writeU32(out, 0u);
+    writeU32(out, static_cast<std::uint32_t>(image.bitsPerChannel));
     out.write(reinterpret_cast<const char*>(image.pixels.data()),
-              static_cast<std::streamsize>(image.pixels.size()));
+              static_cast<std::streamsize>(image.pixels.size() * sizeof(std::uint16_t)));
     if (!out) {
         setError(error, "Unable to write raw interop image payload: " + path);
         return false;
@@ -111,17 +112,21 @@ bool readRawInteropImage(const std::string& path,
         return false;
     }
 
-    std::array<char, kMagic.size()> magic{};
+    std::array<char, kMagicV2.size()> magic{};
     in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
-    if (magic != kMagic) {
+    if (magic != kMagicV2 && magic != kMagicV1) {
         setError(error, "Unsupported raw interop image format: " + path);
         return false;
     }
 
+    const bool isV2 = (magic == kMagicV2);
     const auto width = static_cast<int>(readU32(in));
     const auto height = static_cast<int>(readU32(in));
     const auto channels = static_cast<int>(readU32(in));
-    (void)readU32(in);
+    const int bitsPerChannel = isV2 ? static_cast<int>(readU32(in)) : 8;
+    if (!isV2) {
+        (void)readU32(in);
+    }
 
     std::size_t expectedSize = 0;
     if (!validateShape(width, height, channels, &expectedSize, error)) {
@@ -132,9 +137,23 @@ bool readRawInteropImage(const std::string& path,
     loaded.width = width;
     loaded.height = height;
     loaded.channels = channels;
-    loaded.pixels.resize(expectedSize);
-    in.read(reinterpret_cast<char*>(loaded.pixels.data()),
-            static_cast<std::streamsize>(loaded.pixels.size()));
+    loaded.bitsPerChannel = bitsPerChannel;
+
+    if (isV2) {
+        loaded.pixels.resize(expectedSize);
+        in.read(reinterpret_cast<char*>(loaded.pixels.data()),
+                static_cast<std::streamsize>(expectedSize * sizeof(std::uint16_t)));
+    } else {
+        std::vector<std::uint8_t> pixels8(expectedSize);
+        in.read(reinterpret_cast<char*>(pixels8.data()),
+                static_cast<std::streamsize>(expectedSize));
+        loaded.pixels.resize(expectedSize);
+        for (std::size_t i = 0; i < expectedSize; ++i) {
+            loaded.pixels[i] = static_cast<std::uint16_t>(
+                static_cast<unsigned int>(pixels8[i]) * 257u);
+        }
+    }
+
     if (!in) {
         setError(error, "Raw interop image payload is truncated: " + path);
         return false;

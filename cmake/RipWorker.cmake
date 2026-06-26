@@ -1,11 +1,10 @@
 find_package(Protobuf CONFIG QUIET)
 find_package(gRPC CONFIG QUIET)
-find_package(Qt6 6.11 QUIET COMPONENTS Core Gui)
 
 get_filename_component(GUTENRIP_WORKER_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(GUTENRIP_WORKER_HOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 
-if (NOT TARGET guten_rip_core)
+if (NOT TARGET yink_rip_core)
     add_library(guten_rip_worker_support STATIC
         "${GUTENRIP_WORKER_ROOT}/src/rip/escp_parser.cpp"
         "${GUTENRIP_WORKER_ROOT}/src/rip/escp_parser.h"
@@ -22,15 +21,14 @@ if (NOT TARGET guten_rip_core)
     target_include_directories(guten_rip_worker_support PUBLIC
         "${GUTENRIP_WORKER_ROOT}/src"
     )
-    set(GUTENRIP_WORKER_SUPPORT_TARGET guten_rip_worker_support)
+    set(YINK_WORKER_SUPPORT_TARGET guten_rip_worker_support)
 else()
-    set(GUTENRIP_WORKER_SUPPORT_TARGET guten_rip_core)
+    set(YINK_WORKER_SUPPORT_TARGET yink_rip_core)
 endif()
 
 if (Protobuf_FOUND AND gRPC_FOUND AND
     TARGET protobuf::protoc AND TARGET protobuf::libprotobuf AND
-    TARGET gRPC::grpc++ AND TARGET gRPC::grpc_cpp_plugin AND
-    TARGET Qt6::Core AND TARGET Qt6::Gui)
+    TARGET gRPC::grpc++ AND TARGET gRPC::grpc_cpp_plugin)
     set(GUTENRIP_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
     set(GUTENRIP_WORKER_PROTO "${GUTENRIP_WORKER_ROOT}/proto/rip_worker.proto")
     get_filename_component(GUTENRIP_WORKER_PROTO_DIR "${GUTENRIP_WORKER_PROTO}" DIRECTORY)
@@ -70,32 +68,29 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
     )
 
     if (TARGET YinkStudio)
-        target_compile_definitions(YinkStudio PRIVATE GUTENRIP_HAS_WORKER_CLIENT=1)
+        target_compile_definitions(YinkStudio PRIVATE YINK_HAS_WORKER_CLIENT=1)
         target_link_libraries(YinkStudio PRIVATE guten_rip_worker_proto)
     endif()
 
-    set(GUTENPRINT_LIB_DIR "${CMAKE_SOURCE_DIR}/build-gutenprint/_out" CACHE PATH "Directory containing the built Gutenprint library")
-    set(GUTENRIP_DEFAULT_GUTENPRINT_INCLUDE_DIR "${GUTENRIP_WORKER_ROOT}/gutenprint/include")
-    if (NOT DEFINED GUTENPRINT_INCLUDE_DIR OR
-        GUTENPRINT_INCLUDE_DIR STREQUAL "${CMAKE_SOURCE_DIR}/gutenprint/include" OR
-        NOT EXISTS "${GUTENPRINT_INCLUDE_DIR}")
-        set(GUTENPRINT_INCLUDE_DIR "${GUTENRIP_DEFAULT_GUTENPRINT_INCLUDE_DIR}" CACHE PATH "Directory containing Gutenprint headers" FORCE)
+    if (TARGET yink_rip_core)
+        target_compile_definitions(yink_rip_core PUBLIC YINK_HAS_WORKER_CLIENT=1)
+        target_link_libraries(yink_rip_core PUBLIC guten_rip_worker_proto)
     endif()
-    find_library(GUTENPRINT_LIBRARY
-        NAMES gutenprint libgutenprint
-        PATHS "${GUTENPRINT_LIB_DIR}"
+
+    set(PRINT_ENGINE_LIB_DIR "${CMAKE_SOURCE_DIR}/build-print-engine" CACHE PATH "Directory containing the built print engine library")
+    set(GUTENRIP_DEFAULT_PRINT_ENGINE_INCLUDE_DIR "${GUTENRIP_WORKER_ROOT}/gutenprint/include")
+    if (NOT DEFINED PRINT_ENGINE_INCLUDE_DIR OR
+        PRINT_ENGINE_INCLUDE_DIR STREQUAL "${CMAKE_SOURCE_DIR}/gutenprint/include" OR
+        NOT EXISTS "${PRINT_ENGINE_INCLUDE_DIR}")
+        set(PRINT_ENGINE_INCLUDE_DIR "${GUTENRIP_DEFAULT_PRINT_ENGINE_INCLUDE_DIR}" CACHE PATH "Directory containing print engine headers" FORCE)
+    endif()
+    find_library(PRINT_ENGINE_LIBRARY
+        NAMES print_engine libprint_engine print_engine_impl
+        PATHS "${PRINT_ENGINE_LIB_DIR}"
         NO_DEFAULT_PATH
     )
 
-    if (WIN32)
-        file(GLOB GUTENPRINT_RUNTIME_FILES CONFIGURE_DEPENDS "${GUTENPRINT_LIB_DIR}/libgutenprint*.dll")
-    elseif(APPLE)
-        file(GLOB GUTENPRINT_RUNTIME_FILES CONFIGURE_DEPENDS "${GUTENPRINT_LIB_DIR}/libgutenprint*.dylib")
-    else()
-        file(GLOB GUTENPRINT_RUNTIME_FILES CONFIGURE_DEPENDS "${GUTENPRINT_LIB_DIR}/libgutenprint.so*")
-    endif()
-
-    if (BUILD_RIP_WORKER AND GUTENPRINT_LIBRARY)
+    if (BUILD_RIP_WORKER AND PRINT_ENGINE_LIBRARY)
         add_executable(guten-rip-worker
             "${GUTENRIP_WORKER_ROOT}/src/worker/main.cpp"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.cpp"
@@ -105,22 +100,20 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         target_include_directories(guten-rip-worker PRIVATE
             "${GUTENRIP_WORKER_HOST_ROOT}/src"
             "${GUTENRIP_WORKER_ROOT}/src"
-            "${GUTENPRINT_INCLUDE_DIR}"
-            "${GUTENPRINT_LIB_DIR}"
+            "${PRINT_ENGINE_INCLUDE_DIR}"
+            "${PRINT_ENGINE_LIB_DIR}"
         )
 
         target_link_libraries(guten-rip-worker PRIVATE
-            ${GUTENRIP_WORKER_SUPPORT_TARGET}
+            ${YINK_WORKER_SUPPORT_TARGET}
             guten_rip_worker_proto
-            Qt6::Core
-            Qt6::Gui
-            "${GUTENPRINT_LIBRARY}"
+            "${PRINT_ENGINE_LIBRARY}"
         )
     elseif(BUILD_RIP_WORKER)
-        message(STATUS "Skipping guten-rip-worker: Gutenprint library was not found in ${GUTENPRINT_LIB_DIR}.")
+        message(STATUS "Skipping guten-rip-worker: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
 
-    if (BUILD_CORE_TESTS AND TARGET Qt6::Core AND GUTENPRINT_LIBRARY AND
+    if (BUILD_CORE_TESTS AND PRINT_ENGINE_LIBRARY AND
         EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_rip_worker_client.cpp")
         add_executable(test_rip_worker_client
             "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_rip_worker_client.cpp"
@@ -133,21 +126,22 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.h"
         )
 
-        target_compile_definitions(test_rip_worker_client PRIVATE GUTENRIP_HAS_WORKER_CLIENT=1)
+        target_compile_definitions(test_rip_worker_client PRIVATE
+            YINK_HAS_WORKER_CLIENT=1
+            YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+        )
         target_include_directories(test_rip_worker_client PRIVATE
             "${GUTENRIP_WORKER_HOST_ROOT}/src"
             "${GUTENRIP_WORKER_ROOT}/src"
-            "${GUTENPRINT_INCLUDE_DIR}"
-            "${GUTENPRINT_LIB_DIR}"
+            "${PRINT_ENGINE_INCLUDE_DIR}"
+            "${PRINT_ENGINE_LIB_DIR}"
         )
 
         target_link_libraries(test_rip_worker_client PRIVATE
-            ${GUTENRIP_WORKER_SUPPORT_TARGET}
+            ${YINK_WORKER_SUPPORT_TARGET}
             guten_rip_worker_proto
-            Qt6::Core
-            Qt6::Gui
-            lcms2::lcms2
-            "${GUTENPRINT_LIBRARY}"
+            lcms::lcms
+            "${PRINT_ENGINE_LIBRARY}"
         )
 
         if (WIN32)
@@ -155,9 +149,9 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         endif()
 
         add_test(NAME rip_worker_client COMMAND test_rip_worker_client)
-    elseif(BUILD_CORE_TESTS AND TARGET Qt6::Core)
-        message(STATUS "Skipping test_rip_worker_client: Gutenprint library was not found in ${GUTENPRINT_LIB_DIR}.")
+    elseif(BUILD_CORE_TESTS)
+        message(STATUS "Skipping test_rip_worker_client: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
 else()
-    message(STATUS "Skipping guten-rip-worker and worker client: Protobuf/gRPC C++ packages or Qt6 Core/Gui were not found.")
+    message(STATUS "Skipping guten-rip-worker and worker client: Protobuf/gRPC C++ packages were not found.")
 endif()
