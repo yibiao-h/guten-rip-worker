@@ -704,6 +704,26 @@ int intSetting(const gutenrip::worker::RenderPlaneRequest* request,
     return end != value.c_str() ? static_cast<int>(parsed) : fallback;
 }
 
+int printedVerticalDpiFromResolution(const std::string& resolution)
+{
+    const std::size_t x = resolution.find_first_of("xX");
+    if (x == std::string::npos || x + 1 >= resolution.size()) {
+        return 0;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(resolution.c_str() + x + 1, &end, 10);
+    return end != resolution.c_str() + x + 1 ? static_cast<int>(parsed) : 0;
+}
+
+double escIFeatherEdgeForResolution(double edge, const std::string& resolution)
+{
+    const int printedVerticalDpi = printedVerticalDpiFromResolution(resolution);
+    if (printedVerticalDpi > 0 && printedVerticalDpi != 1440) {
+        return 1.0;
+    }
+    return edge;
+}
+
 bool boolSetting(const gutenrip::worker::RenderPlaneRequest* request,
                  const std::string& key,
                  bool fallback)
@@ -1239,6 +1259,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
         : stringSetting(request, "InkSet", "None");
     const std::string mediaType = rawMediaTypeForDriver(printerDriver, requestedMediaType, inkSet);
     const std::string ditherAlgorithm = rawDitherAlgorithmForDriver(printerDriver, isWhite, request);
+    const std::string resolution = stringSetting(request, "Resolution", "1440x1440ov");
     const double rawDensity = boundedDoubleSetting(request,
                                                    "Density",
                                                    request->density() > 0.0 ? request->density() : 1.0,
@@ -1259,14 +1280,16 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     const double rawBlackDensity = boundedDoubleSetting(request, "BlackDensity", 1.0, 0.0, 1.0);
     const double rawGlossDensity = boundedDoubleSetting(request, "GlossDensity", 1.0, 0.0, 1.0);
     const double rawEscIFeatherEdge =
-        boundedDoubleSetting(request, "EscIFeatherEdge", 0.95, 0.0, 1.0);
+        escIFeatherEdgeForResolution(
+            boundedDoubleSetting(request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
+            resolution);
     const std::string colorCorrection = stringSetting(request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(request));
     setStringParameter(vars, "InputSlot", stringSetting(request, "InputSlot", "Rear"));
     setStringParameter(vars, "Duplex", stringSetting(request, "Duplex", "None"));
     setStringParameter(vars, "CDInnerRadius", stringSetting(request, "CDInnerRadius", "None"));
     setStringParameter(vars, "MediaType", mediaType);
-    setStringParameter(vars, "Resolution", stringSetting(request, "Resolution", "1440x1440ov"));
+    setStringParameter(vars, "Resolution", resolution);
     setStringParameter(vars, "Quality", stringSetting(request, "Quality", "Standard"));
     setStringParameter(vars, "PrintingMode", printingMode);
     setStringParameter(vars, "InputImageType", inputImageType);
@@ -1513,6 +1536,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
         : stringSetting(&request, "InkSet", "None");
     const std::string mediaType = rawMediaTypeForDriver(printerDriver, requestedMediaType, inkSet);
     const std::string ditherAlgorithm = rawDitherAlgorithmForDriver(printerDriver, isWhite, &request);
+    const std::string resolution = stringSetting(&request, "Resolution", "1440x1440ov");
     const double rawDensity = boundedDoubleSetting(&request,
                                                    "Density",
                                                    request.density() > 0.0 ? request.density() : 1.0,
@@ -1533,14 +1557,16 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     const double rawBlackDensity = boundedDoubleSetting(&request, "BlackDensity", 1.0, 0.0, 1.0);
     const double rawGlossDensity = boundedDoubleSetting(&request, "GlossDensity", 1.0, 0.0, 1.0);
     const double rawEscIFeatherEdge =
-        boundedDoubleSetting(&request, "EscIFeatherEdge", 0.95, 0.0, 1.0);
+        escIFeatherEdgeForResolution(
+            boundedDoubleSetting(&request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
+            resolution);
     const std::string colorCorrection = stringSetting(&request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(&request));
     setStringParameter(vars, "InputSlot", stringSetting(&request, "InputSlot", "Rear"));
     setStringParameter(vars, "Duplex", stringSetting(&request, "Duplex", "None"));
     setStringParameter(vars, "CDInnerRadius", stringSetting(&request, "CDInnerRadius", "None"));
     setStringParameter(vars, "MediaType", mediaType);
-    setStringParameter(vars, "Resolution", stringSetting(&request, "Resolution", "1440x1440ov"));
+    setStringParameter(vars, "Resolution", resolution);
     setStringParameter(vars, "Quality", stringSetting(&request, "Quality", "Standard"));
     setStringParameter(vars, "PrintingMode", printingMode);
     setStringParameter(vars, "InputImageType", inputImageType);
