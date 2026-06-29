@@ -718,32 +718,66 @@ int intSetting(const gutenrip::worker::RenderPlaneRequest* request,
     return end != value.c_str() ? static_cast<int>(parsed) : fallback;
 }
 
-int printedVerticalDpiFromResolution(const std::string& resolution)
+struct PrintedDpi {
+    int x = 0;
+    int y = 0;
+};
+
+PrintedDpi printedDpiFromResolution(const res_t* resolution)
+{
+    if (!resolution) {
+        return {};
+    }
+    return {
+        resolution->printed_hres > 0 ? resolution->printed_hres : resolution->hres,
+        resolution->printed_vres > 0 ? resolution->printed_vres : resolution->vres,
+    };
+}
+
+PrintedDpi printedDpiFromResolutionName(const std::string& resolution)
 {
     const std::size_t x = resolution.find_first_of("xX");
     if (x == std::string::npos || x + 1 >= resolution.size()) {
-        return 0;
+        return {};
     }
-    char* end = nullptr;
-    const long parsed = std::strtol(resolution.c_str() + x + 1, &end, 10);
-    return end != resolution.c_str() + x + 1 ? static_cast<int>(parsed) : 0;
+    char* xEnd = nullptr;
+    const long parsedX = std::strtol(resolution.c_str(), &xEnd, 10);
+    char* yEnd = nullptr;
+    const long parsedY = std::strtol(resolution.c_str() + x + 1, &yEnd, 10);
+    return {
+        xEnd != resolution.c_str() ? static_cast<int>(parsedX) : 0,
+        yEnd != resolution.c_str() + x + 1 ? static_cast<int>(parsedY) : 0,
+    };
 }
 
-double escIFeatherEdgeForResolution(double edge, const std::string& resolution)
+double escIFeatherEdgeForResolution(double edge, const PrintedDpi& printedDpi)
 {
-    const int printedVerticalDpi = printedVerticalDpiFromResolution(resolution);
-    if (printedVerticalDpi > 0 && printedVerticalDpi != 1440) {
+    if (printedDpi.x <= 0 || printedDpi.y <= 0) {
         return 1.0;
     }
     return edge;
 }
 
-int escIFeatherBaseResolutionOverride(double edge, const std::string& resolution)
+int escIFeatherBaseResolutionOverride(double edge, const PrintedDpi& printedDpi)
 {
-    if (edge < 0.999 && resolution == "720x1440sw") {
-        return 360;
+    if (edge >= 0.999 || printedDpi.x <= 0 || printedDpi.y <= 0 ||
+        printedDpi.x >= printedDpi.y || (printedDpi.x % 2) != 0) {
+        return 0;
     }
-    return 0;
+    return printedDpi.x / 2;
+}
+
+PrintedDpi activePrintedDpiForResolution(stp_vars_t* vars,
+                                         const std::string& resolution)
+{
+    if (vars && !resolution.empty()) {
+        stp_set_string_parameter(vars, "Resolution", resolution.c_str());
+    }
+    PrintedDpi printedDpi = printedDpiFromResolution(stpi_escp2_find_resolution(vars));
+    if (printedDpi.x <= 0 || printedDpi.y <= 0) {
+        printedDpi = printedDpiFromResolutionName(resolution);
+    }
+    return printedDpi;
 }
 
 bool boolSetting(const gutenrip::worker::RenderPlaneRequest* request,
@@ -1306,12 +1340,13 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     const double rawYellowDensity = boundedDoubleSetting(request, "YellowDensity", 1.0, 0.0, 1.0);
     const double rawBlackDensity = boundedDoubleSetting(request, "BlackDensity", 1.0, 0.0, 1.0);
     const double rawGlossDensity = boundedDoubleSetting(request, "GlossDensity", 1.0, 0.0, 1.0);
+    const PrintedDpi printedDpi = activePrintedDpiForResolution(vars, resolution);
     const double rawEscIFeatherEdge =
         escIFeatherEdgeForResolution(
             boundedDoubleSetting(request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
-            resolution);
+            printedDpi);
     const int escIFeatherBaseRes =
-        escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, resolution);
+        escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, printedDpi);
     int bandEnhancement = intSetting(request, "BandEnhancement", 0);
     const std::string colorCorrection = stringSetting(request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(request));
@@ -1592,12 +1627,13 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     const double rawYellowDensity = boundedDoubleSetting(&request, "YellowDensity", 1.0, 0.0, 1.0);
     const double rawBlackDensity = boundedDoubleSetting(&request, "BlackDensity", 1.0, 0.0, 1.0);
     const double rawGlossDensity = boundedDoubleSetting(&request, "GlossDensity", 1.0, 0.0, 1.0);
+    const PrintedDpi printedDpi = activePrintedDpiForResolution(vars, resolution);
     const double rawEscIFeatherEdge =
         escIFeatherEdgeForResolution(
             boundedDoubleSetting(&request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
-            resolution);
+            printedDpi);
     const int escIFeatherBaseRes =
-        escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, resolution);
+        escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, printedDpi);
     int bandEnhancement = intSetting(&request, "BandEnhancement", 0);
     const std::string colorCorrection = stringSetting(&request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(&request));
