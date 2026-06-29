@@ -1343,7 +1343,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     const PrintedDpi printedDpi = activePrintedDpiForResolution(vars, resolution);
     const double rawEscIFeatherEdge =
         escIFeatherEdgeForResolution(
-            boundedDoubleSetting(request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
+            boundedDoubleSetting(request, "EscIFeatherEdge", 1.0, 0.0, 1.0),
             printedDpi);
     const int escIFeatherBaseRes =
         escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, printedDpi);
@@ -1630,7 +1630,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     const PrintedDpi printedDpi = activePrintedDpiForResolution(vars, resolution);
     const double rawEscIFeatherEdge =
         escIFeatherEdgeForResolution(
-            boundedDoubleSetting(&request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
+            boundedDoubleSetting(&request, "EscIFeatherEdge", 1.0, 0.0, 1.0),
             printedDpi);
     const int escIFeatherBaseRes =
         escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, printedDpi);
