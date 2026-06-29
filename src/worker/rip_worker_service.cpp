@@ -16,6 +16,7 @@
 #include <iostream>
 #include <iterator>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -135,6 +136,19 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 }
 
 namespace {
+
+void appendWorkerRuntimeLog(const std::string& line)
+{
+    std::error_code ec;
+    const auto path = std::filesystem::current_path(ec) / "yink-worker-runtime.log";
+    if (ec) {
+        return;
+    }
+    std::ofstream out(path, std::ios::app);
+    if (out) {
+        out << line << '\n';
+    }
+}
 
 struct OutputContext {
     std::ofstream out;
@@ -1620,33 +1634,39 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     image.get_appname = appNameFunc;
     image.rep = &layoutContext;
 
-    std::cerr << "[guten-rip-worker] RenderPlaneStream begin"
-              << " job_id=" << request.job_id()
-              << " plane=" << (isWhite ? "white" : "color")
-              << " printer=" << printerDriver
-              << " selectedInkType=" << inkType
-              << " imagePx=" << layoutContext.imageWidth << "x" << layoutContext.imageHeight
-              << " rawChannels=" << layoutContext.rawChannelCount
-              << " ditherAlgorithm=" << ditherAlgorithm
-              << " density=" << rawDensity
-              << " inkLimit=" << rawInkLimit
-              << " escIFeatherEdge=" << rawEscIFeatherEdge
-              << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
-              << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
-              << " requestedInputImageType=" << requestedInputImageType
-              << " STP_DATA_PATH=" << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "")
-              << std::endl;
+    std::ostringstream streamBeginLog;
+    streamBeginLog << "[guten-rip-worker] RenderPlaneStream begin"
+                   << " job_id=" << request.job_id()
+                   << " plane=" << (isWhite ? "white" : "color")
+                   << " printer=" << printerDriver
+                   << " selectedInkType=" << inkType
+                   << " imagePx=" << layoutContext.imageWidth << "x" << layoutContext.imageHeight
+                   << " rawChannels=" << layoutContext.rawChannelCount
+                   << " ditherAlgorithm=" << ditherAlgorithm
+                   << " density=" << rawDensity
+                   << " inkLimit=" << rawInkLimit
+                   << " escIFeatherEdge=" << rawEscIFeatherEdge
+                   << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
+                   << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
+                   << " requestedInputImageType=" << requestedInputImageType
+                   << " STP_DATA_PATH=" << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "");
+    const std::string streamBeginMessage = streamBeginLog.str();
+    std::cerr << streamBeginMessage << std::endl;
+    appendWorkerRuntimeLog(streamBeginMessage);
 
     const int printResult = stp_print(vars, &image);
     const auto tail = rewriter.finish();
     (void)writeOutputBytes(&outputCtx, tail);
 
-    std::cerr << "[guten-rip-worker] RenderPlaneStream stp_print returned"
-              << " job_id=" << request.job_id()
-              << " result=" << printResult
-              << " bytes=" << outputCtx.bytesWritten
-              << " streamError=" << layoutContext.streamError
-              << std::endl;
+    std::ostringstream streamDoneLog;
+    streamDoneLog << "[guten-rip-worker] RenderPlaneStream stp_print returned"
+                  << " job_id=" << request.job_id()
+                  << " result=" << printResult
+                  << " bytes=" << outputCtx.bytesWritten
+                  << " streamError=" << layoutContext.streamError;
+    const std::string streamDoneMessage = streamDoneLog.str();
+    std::cerr << streamDoneMessage << std::endl;
+    appendWorkerRuntimeLog(streamDoneMessage);
 
     stp_vars_destroy(vars);
 
