@@ -738,6 +738,14 @@ double escIFeatherEdgeForResolution(double edge, const std::string& resolution)
     return edge;
 }
 
+int escIFeatherBaseResolutionOverride(double edge, const std::string& resolution)
+{
+    if (edge < 0.999 && resolution == "720x1440sw") {
+        return 360;
+    }
+    return 0;
+}
+
 bool boolSetting(const gutenrip::worker::RenderPlaneRequest* request,
                  const std::string& key,
                  bool fallback)
@@ -927,6 +935,11 @@ void setStringParameter(stp_vars_t* vars, const char* key, const std::string& va
 void setFloatParameter(stp_vars_t* vars, const char* key, double value)
 {
     stp_set_float_parameter(vars, key, value);
+}
+
+void setIntParameter(stp_vars_t* vars, const char* key, int value)
+{
+    stp_set_int_parameter(vars, key, value);
 }
 
 void setBoolParameter(stp_vars_t* vars, const char* key, bool value)
@@ -1297,6 +1310,9 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
         escIFeatherEdgeForResolution(
             boundedDoubleSetting(request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
             resolution);
+    const int escIFeatherBaseRes =
+        escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, resolution);
+    int bandEnhancement = intSetting(request, "BandEnhancement", 0);
     const std::string colorCorrection = stringSetting(request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(request));
     setStringParameter(vars, "InputSlot", stringSetting(request, "InputSlot", "Rear"));
@@ -1315,6 +1331,10 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     setStringParameter(vars, "ChannelBitDepth", stringSetting(request, "ChannelBitDepth", "16"));
     setStringParameter(vars, "PrintingDirection", stringSetting(request, "PrintingDirection", "Bidirectional"));
     setStringParameter(vars, "Weave", stringSetting(request, "Weave", "None"));
+    if (escIFeatherBaseRes > 0) {
+        setIntParameter(vars, "escp2_base_res", escIFeatherBaseRes);
+    }
+    setIntParameter(vars, "BandEnhancement", bandEnhancement);
     setFloatParameter(vars, "Density", rawDensity);
     setFloatParameter(vars, "InkLimit", rawInkLimit);
     setFloatParameter(vars, "CyanDensity", rawCyanDensity);
@@ -1390,6 +1410,8 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
               << "," << rawYellowDensity << "," << rawBlackDensity
               << " glossDensity=" << rawGlossDensity
               << " escIFeatherEdge=" << rawEscIFeatherEdge
+              << " escIFeatherBaseRes=" << escIFeatherBaseRes
+              << " bandEnhancement=" << bandEnhancement
               << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
               << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
               << " rawChannels=" << layoutContext.rawChannelCount
@@ -1574,6 +1596,9 @@ grpc::Status RipWorkerService::RenderPlaneStream(
         escIFeatherEdgeForResolution(
             boundedDoubleSetting(&request, "EscIFeatherEdge", 0.95, 0.0, 1.0),
             resolution);
+    const int escIFeatherBaseRes =
+        escIFeatherBaseResolutionOverride(rawEscIFeatherEdge, resolution);
+    int bandEnhancement = intSetting(&request, "BandEnhancement", 0);
     const std::string colorCorrection = stringSetting(&request, "ColorCorrection", "Density");
     setStringParameter(vars, "PageSize", pageSizeForLayout(&request));
     setStringParameter(vars, "InputSlot", stringSetting(&request, "InputSlot", "Rear"));
@@ -1592,6 +1617,10 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     setStringParameter(vars, "ChannelBitDepth", stringSetting(&request, "ChannelBitDepth", "16"));
     setStringParameter(vars, "PrintingDirection", stringSetting(&request, "PrintingDirection", "Bidirectional"));
     setStringParameter(vars, "Weave", stringSetting(&request, "Weave", "None"));
+    if (escIFeatherBaseRes > 0) {
+        setIntParameter(vars, "escp2_base_res", escIFeatherBaseRes);
+    }
+    setIntParameter(vars, "BandEnhancement", bandEnhancement);
     setFloatParameter(vars, "Density", rawDensity);
     setFloatParameter(vars, "InkLimit", rawInkLimit);
     setFloatParameter(vars, "CyanDensity", rawCyanDensity);
@@ -1646,6 +1675,8 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                    << " density=" << rawDensity
                    << " inkLimit=" << rawInkLimit
                    << " escIFeatherEdge=" << rawEscIFeatherEdge
+                   << " escIFeatherBaseRes=" << escIFeatherBaseRes
+                   << " bandEnhancement=" << bandEnhancement
                    << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
                    << " rawHasWhiteInk=" << (rawHasWhiteInk ? "true" : "false")
                    << " requestedInputImageType=" << requestedInputImageType
