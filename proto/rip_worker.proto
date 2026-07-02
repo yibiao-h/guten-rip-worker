@@ -137,6 +137,7 @@ message DriverResolution {
   int32 physical_dpi_y = 4;
   int32 printed_dpi_x = 5;
   int32 printed_dpi_y = 6;
+  int32 base_dpi_x = 7;
 }
 
 message PrintDriverProfile {
