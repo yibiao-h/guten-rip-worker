@@ -1023,7 +1023,9 @@ ResolvedChannelLayout resolveChannelLayout(
             resolved.escColor = escIColorForSubchannel(subchannel);
             resolved.physicalHeadOffset = subchannel.head_offset;
             resolved.runtimeHeadOffset = offsetChannel ? automaticHeadOffset : 0;
-            resolved.correctionRows = resolved.runtimeHeadOffset / result.nozzleSeparation;
+            resolved.correctionRows = resolved.runtimeHeadOffset == 0
+                ? automaticHeadOffset / result.nozzleSeparation
+                : 0;
             resolved.density = channelDensities[static_cast<std::size_t>(physicalIndex)];
             result.channels.push_back(std::move(resolved));
             ++physicalIndex;
