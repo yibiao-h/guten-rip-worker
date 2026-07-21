@@ -154,7 +154,7 @@ struct OutputContext {
     std::ofstream out;
     grpc::ServerReaderWriter<gutenrip::worker::RenderPlaneStreamResponse,
                              gutenrip::worker::RenderPlaneStreamRequest>* stream = nullptr;
-    yink::rip::PrnStreamRewriter* rewriter = nullptr;
+    yink::rip::ChannelOffsetCorrector* offsetCorrector = nullptr;
     std::size_t bytesWritten = 0;
     bool writeFailed = false;
 };
@@ -243,8 +243,8 @@ bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
     }
     const std::string text((std::istreambuf_iterator<char>(in)),
                            std::istreambuf_iterator<char>());
-    return text.find("escp2-l18050-86") != std::string::npos &&
-           text.find("escp2-et8550-86") != std::string::npos;
+    return text.find("escp2-l18050") != std::string::npos &&
+           text.find("escp2-et8550") != std::string::npos;
 }
 
 std::filesystem::path getExecutableDir()
@@ -348,130 +348,6 @@ int escIColorForSubchannel(const physical_subchannel_t& subchannel)
     return color | (static_cast<int>(subchannel.subchannel) << 4);
 }
 
-bool endsWith(const char* value, const char* suffix)
-{
-    if (!value || !suffix) {
-        return false;
-    }
-    const std::size_t valueLen = std::strlen(value);
-    const std::size_t suffixLen = std::strlen(suffix);
-    return valueLen >= suffixLen &&
-           std::strcmp(value + valueLen - suffixLen, suffix) == 0;
-}
-
-void updateWhiteEscColor(const physical_subchannel_t& subchannel,
-                         gutenrip::worker::PrintDriverProfile* profile)
-{
-    if (!subchannel.name || !profile) {
-        return;
-    }
-    const std::string name = subchannel.name;
-    const int escColor = escIColorForSubchannel(subchannel);
-    if (name == "LightCyanWhite" || name == "PhotoblackWhite") {
-        profile->set_primary_white_esc_color(escColor);
-    } else if (name == "LightMagentaWhite" || name == "MagentaWhite" ||
-               name == "GrayWhite") {
-        profile->set_secondary_white_esc_color(escColor);
-    }
-}
-
-void scanInkChannelWhiteEscColors(const ink_channel_t& channel,
-                                  gutenrip::worker::PrintDriverProfile* profile)
-{
-    for (unsigned int i = 0; i < channel.n_subchannels; ++i) {
-        updateWhiteEscColor(channel.subchannels[i], profile);
-    }
-}
-
-void scanInkNameWhiteEscColors(const inkname_t& inkName,
-                               gutenrip::worker::PrintDriverProfile* profile)
-{
-    for (unsigned int i = 0; i < inkName.channel_count; ++i) {
-        scanInkChannelWhiteEscColors(inkName.channels[i], profile);
-    }
-    for (unsigned int i = 0; i < inkName.aux_channel_count; ++i) {
-        scanInkChannelWhiteEscColors(inkName.aux_channels[i], profile);
-    }
-}
-
-void fillWhiteEscColors(const stp_vars_t* vars,
-                        gutenrip::worker::PrintDriverProfile* profile)
-{
-    const inklist_t* inkList = stpi_escp2_inklist(vars);
-    if (!inkList) {
-        return;
-    }
-    for (unsigned int i = 0; i < inkList->n_inks; ++i) {
-        scanInkNameWhiteEscColors(inkList->inknames[i], profile);
-    }
-}
-
-void addBaseEscColor(const ink_channel_t& channel,
-                     bool colorOffset,
-                     gutenrip::worker::PrintDriverProfile* profile)
-{
-    if (!profile || !endsWith(channel.name, "_base")) {
-        return;
-    }
-    for (unsigned int i = 0; i < channel.n_subchannels; ++i) {
-        const int escColor = escIColorForSubchannel(channel.subchannels[i]);
-        if (colorOffset) {
-            profile->add_color_offset_base_esc_colors(escColor);
-        } else {
-            profile->add_white_offset_base_esc_colors(escColor);
-        }
-    }
-}
-
-void scanInkNameBaseEscColors(const inkname_t& inkName,
-                              gutenrip::worker::PrintDriverProfile* profile)
-{
-    if (!inkName.name) {
-        return;
-    }
-    const bool colorOffset = std::strcmp(inkName.name, "ColorOffset6") == 0;
-    const bool whiteOffset = std::strcmp(inkName.name, "WhiteOffset6") == 0;
-    if (!colorOffset && !whiteOffset) {
-        return;
-    }
-    for (unsigned int i = 0; i < inkName.channel_count; ++i) {
-        addBaseEscColor(inkName.channels[i], colorOffset, profile);
-    }
-    for (unsigned int i = 0; i < inkName.aux_channel_count; ++i) {
-        addBaseEscColor(inkName.aux_channels[i], colorOffset, profile);
-    }
-}
-
-void scanBaseEscColorsForInkSet(stp_vars_t* vars,
-                                const char* inkSet,
-                                const char* inkType,
-                                gutenrip::worker::PrintDriverProfile* profile)
-{
-    if (!vars || !inkSet || !inkType || !profile) {
-        return;
-    }
-    stp_set_string_parameter(vars, "MediaType", inkSet);
-    stp_set_string_parameter(vars, "InkSet", inkSet);
-    stp_set_string_parameter(vars, "InkType", inkType);
-    const inklist_t* inkList = stpi_escp2_inklist(vars);
-    if (!inkList) {
-        return;
-    }
-    for (unsigned int i = 0; i < inkList->n_inks; ++i) {
-        scanInkNameBaseEscColors(inkList->inknames[i], profile);
-    }
-}
-
-void fillBaseEscColors(stp_vars_t* vars,
-                       gutenrip::worker::PrintDriverProfile* profile)
-{
-    scanBaseEscColorsForInkSet(vars, "ColorOffset", "ColorOffset6", profile);
-    scanBaseEscColorsForInkSet(vars, "WhiteOffset", "WhiteOffset6", profile);
-    stp_set_string_parameter(vars, "MediaType", "ColorOffset");
-    stp_set_string_parameter(vars, "InkSet", "ColorOffset");
-    stp_set_string_parameter(vars, "InkType", "ColorOffset6");
-}
-
 int intParameterForResolution(stp_vars_t* vars,
                               const res_t* res,
                               const char* parameter)
@@ -537,8 +413,8 @@ void primeCatalogVars(stp_vars_t* vars)
     stp_set_string_parameter(vars, "PrintingMode", "Color");
     stp_set_string_parameter(vars, "InputImageType", "Raw");
     stp_set_string_parameter(vars, "RawChannels", "6");
-    stp_set_string_parameter(vars, "InkSet", "ColorOffset");
-    stp_set_string_parameter(vars, "InkType", "ColorOffset6");
+    stp_set_string_parameter(vars, "InkSet", "Physical");
+    stp_set_string_parameter(vars, "InkType", "Physical6");
     stp_set_string_parameter(vars, "ColorCorrection", "Density");
     stp_set_string_parameter(vars, "DitherAlgorithm", "Adaptive");
 }
@@ -578,8 +454,28 @@ void addCatalogPrinter(const stp_printer_t* printer,
         profile->set_base_padding_lines((escp2->base_separation / escp2->nozzle_separation) -
                                         escp2->nozzles);
     }
-    fillWhiteEscColors(vars, profile);
-    fillBaseEscColors(vars, profile);
+    const inklist_t* inkList = stpi_escp2_inklist(vars);
+    if (inkList) {
+        for (unsigned int inkIndex = 0; inkIndex < inkList->n_inks; ++inkIndex) {
+            const inkname_t& inkName = inkList->inknames[inkIndex];
+            if (!inkName.name || std::strcmp(inkName.name, "Physical6") != 0) {
+                continue;
+            }
+            profile->set_channel_count(inkName.channel_count);
+            int channelIndex = 0;
+            for (unsigned int i = 0; i < inkName.channel_count; ++i) {
+                const ink_channel_t& channel = inkName.channels[i];
+                for (unsigned int j = 0; j < channel.n_subchannels; ++j) {
+                    const physical_subchannel_t& subchannel = channel.subchannels[j];
+                    auto* physical = profile->add_physical_channels();
+                    physical->set_index(channelIndex++);
+                    physical->set_esc_color(escIColorForSubchannel(subchannel));
+                    physical->set_physical_head_offset(subchannel.head_offset);
+                }
+            }
+            break;
+        }
+    }
     fillResolutions(vars, profile);
 
     stp_vars_destroy(vars);
@@ -868,13 +764,8 @@ bool rawChannelsHaveNonZero(const LayoutImageContext& context,
 
 std::string normalizedRawInkTypeFor(const std::string& inkType)
 {
-    if (inkType == "WhiteOffset6" ||
-        inkType == "WhiteOffset" ||
-        inkType == "WhiteOffset90" ||
-        inkType == "ColorBase0") {
-        return "WhiteOffset6";
-    }
-    return "ColorOffset6";
+    (void)inkType;
+    return "Physical6";
 }
 
 yink::rip::ComposeOptions composeOptionsFromProto(const gutenrip::worker::ComposeSettings& source)
@@ -916,17 +807,15 @@ yink::rip::ComposeOptions composeOptionsFromProto(const gutenrip::worker::Compos
 
 std::string rawInkSetForInkType(const std::string& inkType)
 {
-    return normalizedRawInkTypeFor(inkType) == "WhiteOffset6"
-        ? "WhiteOffset"
-        : "ColorOffset";
+    (void)inkType;
+    return "Physical";
 }
 
 bool isLayeredRawDriver(const std::string& driver)
 {
-    const std::string l18050Prefix = "escp2-l18050-";
-    const std::string et8550Prefix = "escp2-et8550-";
-    return driver.compare(0, l18050Prefix.size(), l18050Prefix) == 0 ||
-           driver.compare(0, et8550Prefix.size(), et8550Prefix) == 0;
+    return driver == "escp2-l18050" || driver == "escp2-et8550" ||
+           driver.rfind("escp2-l18050-", 0) == 0 ||
+           driver.rfind("escp2-et8550-", 0) == 0;
 }
 
 std::string rawMediaTypeForDriver(const std::string& driver,
@@ -934,7 +823,8 @@ std::string rawMediaTypeForDriver(const std::string& driver,
                                   const std::string& inkSet)
 {
     if (isLayeredRawDriver(driver)) {
-        return inkSet;
+        (void)inkSet;
+        return "ColorOffset";
     }
     return requestedMediaType.empty() ? std::string("Plain") : requestedMediaType;
 }
@@ -988,6 +878,183 @@ void setBoolParameter(stp_vars_t* vars, const char* key, bool value)
     stp_set_boolean_parameter(vars, key, value ? 1 : 0);
 }
 
+struct ResolvedChannel {
+    std::string source;
+    int escColor = 0;
+    int physicalHeadOffset = 0;
+    int runtimeHeadOffset = 0;
+    int correctionRows = 0;
+    double density = 1.0;
+};
+
+struct ResolvedChannelLayout {
+    bool ok = false;
+    std::string error;
+    int physicalNozzles = 0;
+    int activeNozzles = 0;
+    int nozzleSeparation = 0;
+    std::vector<ResolvedChannel> channels;
+};
+
+bool isLogicalInk(const std::string& source)
+{
+    return source == "C" || source == "M" || source == "Y" ||
+           source == "K" || source == "W";
+}
+
+std::vector<std::string> defaultChannelMapping(const std::string& driver)
+{
+    if (driver.find("et8550") != std::string::npos) {
+        return {"K", "W", "W", "Y", "M", "C"};
+    }
+    return {"K", "W", "W", "C", "Y", "M"};
+}
+
+const inkname_t* physicalInkName(stp_vars_t* vars)
+{
+    const inklist_t* inkList = stpi_escp2_inklist(vars);
+    if (!inkList) {
+        return nullptr;
+    }
+    for (unsigned int i = 0; i < inkList->n_inks; ++i) {
+        if (inkList->inknames[i].name &&
+            std::strcmp(inkList->inknames[i].name, "Physical6") == 0) {
+            return &inkList->inknames[i];
+        }
+    }
+    return nullptr;
+}
+
+double densityForSource(const std::string& source,
+                        double cyan,
+                        double magenta,
+                        double yellow,
+                        double black,
+                        double white)
+{
+    if (source == "C") return cyan;
+    if (source == "M") return magenta;
+    if (source == "Y") return yellow;
+    if (source == "K") return black;
+    return white;
+}
+
+ResolvedChannelLayout resolveChannelLayout(
+    stp_vars_t* vars,
+    const std::string& driver,
+    const std::string& resolution,
+    const gutenrip::worker::ComposeSettings& settings,
+    double cyanDensity,
+    double magentaDensity,
+    double yellowDensity,
+    double blackDensity,
+    double whiteDensity)
+{
+    ResolvedChannelLayout result;
+    const stpi_escp2_printer_t* printer = stpi_escp2_get_printer(vars);
+    const inkname_t* inkName = physicalInkName(vars);
+    if (!printer || !inkName) {
+        result.error = "Unable to resolve physical raw channel layout.";
+        return result;
+    }
+
+    std::vector<std::string> mapping;
+    mapping.reserve(static_cast<std::size_t>(settings.channel_mapping_size()));
+    for (const auto& source : settings.channel_mapping()) {
+        mapping.push_back(source);
+    }
+    if (mapping.empty()) {
+        mapping = defaultChannelMapping(driver);
+    }
+
+    int physicalChannelCount = 0;
+    for (unsigned int i = 0; i < inkName->channel_count; ++i) {
+        physicalChannelCount += inkName->channels[i].n_subchannels;
+    }
+    if (mapping.size() != static_cast<std::size_t>(physicalChannelCount)) {
+        result.error = "Channel mapping count does not match the physical raw channel count.";
+        return result;
+    }
+    for (const auto& source : mapping) {
+        if (!isLogicalInk(source)) {
+            result.error = "Channel mapping contains an unsupported logical ink.";
+            return result;
+        }
+    }
+
+    result.physicalNozzles = printer->nozzles;
+    result.nozzleSeparation = printer->nozzle_separation;
+    result.activeNozzles = resolution.find("720x1440") != std::string::npos ? 83 : 86;
+    if (result.physicalNozzles <= 0 || result.nozzleSeparation <= 0 ||
+        result.activeNozzles <= 0 || result.activeNozzles > result.physicalNozzles) {
+        result.error = "Resolved nozzle geometry is invalid.";
+        return result;
+    }
+
+    const int automaticHeadOffset =
+        (result.physicalNozzles - result.activeNozzles) * result.nozzleSeparation;
+    const bool whiteOverColor = settings.layer_order() == "WhiteOverColor";
+    int physicalIndex = 0;
+    for (unsigned int i = 0; i < inkName->channel_count; ++i) {
+        const ink_channel_t& channel = inkName->channels[i];
+        for (unsigned int j = 0; j < channel.n_subchannels; ++j) {
+            const physical_subchannel_t& subchannel = channel.subchannels[j];
+            const std::string& source = mapping[static_cast<std::size_t>(physicalIndex)];
+            const bool white = source == "W";
+            const bool offsetChannel = whiteOverColor ? white : !white;
+
+            ResolvedChannel resolved;
+            resolved.source = source;
+            resolved.escColor = escIColorForSubchannel(subchannel);
+            resolved.physicalHeadOffset = subchannel.head_offset;
+            resolved.runtimeHeadOffset = offsetChannel ? automaticHeadOffset : 0;
+            resolved.correctionRows = resolved.runtimeHeadOffset / result.nozzleSeparation;
+            resolved.density = densityForSource(source,
+                                                cyanDensity,
+                                                magentaDensity,
+                                                yellowDensity,
+                                                blackDensity,
+                                                whiteDensity);
+            result.channels.push_back(std::move(resolved));
+            ++physicalIndex;
+        }
+    }
+    result.ok = true;
+    return result;
+}
+
+void applyChannelLayout(stp_vars_t* vars, const ResolvedChannelLayout& layout)
+{
+    setIntParameter(vars, "RawActiveNozzles", layout.activeNozzles);
+    for (std::size_t i = 0; i < layout.channels.size(); ++i) {
+        const std::string suffix = std::to_string(i);
+        setIntParameter(vars,
+                        ("RawHeadOffset" + suffix).c_str(),
+                        layout.channels[i].runtimeHeadOffset);
+        setFloatParameter(vars,
+                          ("RawChannelDensity" + suffix).c_str(),
+                          layout.channels[i].density);
+    }
+}
+
+yink::rip::ChannelOffsetCorrectionOptions correctionOptionsForLayout(
+    const gutenrip::worker::ComposeSettings& source,
+    const ResolvedChannelLayout& layout)
+{
+    auto options = composeOptionsFromProto(source);
+    options.nozzles = layout.activeNozzles;
+    options.nozzleSeparation = layout.nozzleSeparation;
+    options.baseSeparation = layout.physicalNozzles * layout.nozzleSeparation;
+    options.baseChannelColors.clear();
+    options.channelCorrections.clear();
+    options.channelCorrections.reserve(layout.channels.size());
+    for (const auto& channel : layout.channels) {
+        options.channelCorrections.push_back(
+            {channel.escColor, channel.correctionRows});
+    }
+    return options;
+}
+
 bool writeOutputBytes(OutputContext* ctx, const std::uint8_t* bytes, std::size_t size)
 {
     if (!ctx || !bytes || size == 0) {
@@ -1025,8 +1092,9 @@ void outputFunc(void* data, const char* buffer, std::size_t bytes)
     if (!ctx || ctx->writeFailed) {
         return;
     }
-    if (ctx->rewriter) {
-        const auto rewritten = ctx->rewriter->append(reinterpret_cast<const std::uint8_t*>(buffer), bytes);
+    if (ctx->offsetCorrector) {
+        const auto rewritten = ctx->offsetCorrector->append(
+            reinterpret_cast<const std::uint8_t*>(buffer), bytes);
         (void)writeOutputBytes(ctx, rewritten);
     } else {
         (void)writeOutputBytes(ctx, reinterpret_cast<const std::uint8_t*>(buffer), bytes);
@@ -1269,7 +1337,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     (void)context;
 
     const bool isWhite = request->plane() == gutenrip::worker::PLANE_WHITE;
-    const std::string colorInkType = normalizedRawInkTypeFor(stringSetting(request, "InkType", "ColorOffset6"));
+    const std::string colorInkType = normalizedRawInkTypeFor(stringSetting(request, "InkType", "Physical6"));
     const std::string whiteInkType = normalizedRawInkTypeFor(stringSetting(request, "WhiteInkType",
                                                    defaultWhiteInkTypeFor(colorInkType)));
     const std::string inkType = isWhite ? whiteInkType : colorInkType;
@@ -1556,7 +1624,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     *request.mutable_print_settings() = start.print_settings();
 
     const bool isWhite = request.plane() == gutenrip::worker::PLANE_WHITE;
-    const std::string colorInkType = normalizedRawInkTypeFor(stringSetting(&request, "InkType", "ColorOffset6"));
+    const std::string colorInkType = normalizedRawInkTypeFor(stringSetting(&request, "InkType", "Physical6"));
     const std::string whiteInkType = normalizedRawInkTypeFor(stringSetting(&request, "WhiteInkType",
                                                    defaultWhiteInkTypeFor(colorInkType)));
     const std::string inkType = isWhite ? whiteInkType : colorInkType;
@@ -1666,6 +1734,23 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     setFloatParameter(vars, "Saturation", doubleSetting(&request, "Saturation", 1.0));
     setFloatParameter(vars, "Gamma", doubleSetting(&request, "Gamma", 1.0));
 
+    const ResolvedChannelLayout channelLayout = resolveChannelLayout(
+        vars,
+        printerDriver,
+        resolution,
+        start.compose(),
+        rawCyanDensity,
+        rawMagentaDensity,
+        rawYellowDensity,
+        rawBlackDensity,
+        rawGlossDensity);
+    if (!channelLayout.ok) {
+        stp_vars_destroy(vars);
+        sendDone(false, channelLayout.error, 0);
+        return grpc::Status::OK;
+    }
+    applyChannelLayout(vars, channelLayout);
+
     const stp_dimension_t pageWidth = mmToPoints(pageMMFromRequest(request.page_width_mm(),
                                                                    request.page_width_points(),
                                                                    210.0));
@@ -1680,10 +1765,11 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     stp_set_width(vars, std::max<stp_dimension_t>(1.0, mmToPoints(layoutContext.imageWidthMM)));
     stp_set_height(vars, std::max<stp_dimension_t>(1.0, mmToPoints(layoutContext.imageHeightMM)));
 
-    yink::rip::PrnStreamRewriter rewriter(composeOptionsFromProto(start.compose()));
+    yink::rip::ChannelOffsetCorrector offsetCorrector(
+        correctionOptionsForLayout(start.compose(), channelLayout));
     OutputContext outputCtx;
     outputCtx.stream = stream;
-    outputCtx.rewriter = &rewriter;
+    outputCtx.offsetCorrector = &offsetCorrector;
     stp_set_outfunc(vars, outputFunc);
     stp_set_outdata(vars, &outputCtx);
 
@@ -1717,7 +1803,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     appendWorkerRuntimeLog(streamBeginMessage);
 
     const int printResult = stp_print(vars, &image);
-    const auto tail = rewriter.finish();
+    const auto tail = offsetCorrector.finish();
     (void)writeOutputBytes(&outputCtx, tail);
 
     std::ostringstream streamDoneLog;

@@ -56,6 +56,7 @@ message ComposeSettings {
   int32 nozzle_separation = 8;
   int32 base_separation = 9;
   repeated int32 base_channel_colors = 10;
+  repeated string channel_mapping = 11;
 }
 
 message RenderPlaneStreamStart {
@@ -154,6 +155,14 @@ message PrintDriverProfile {
   int32 secondary_white_esc_color = 11;
   repeated int32 color_offset_base_esc_colors = 12;
   repeated int32 white_offset_base_esc_colors = 13;
+  int32 channel_count = 14;
+  repeated PhysicalChannelProfile physical_channels = 15;
+}
+
+message PhysicalChannelProfile {
+  int32 index = 1;
+  int32 esc_color = 2;
+  int32 physical_head_offset = 3;
 }
 
 message PrintDriverCatalog {

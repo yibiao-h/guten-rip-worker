@@ -8,10 +8,10 @@
 
 namespace gutenrip::rip {
 
-class PrnStreamRewriter
+class ChannelOffsetCorrector
 {
 public:
-    explicit PrnStreamRewriter(ComposeOptions options = {});
+    explicit ChannelOffsetCorrector(ChannelOffsetCorrectionOptions options = {});
 
     std::vector<std::uint8_t> append(const std::uint8_t* data, std::size_t size);
     std::vector<std::uint8_t> append(const std::vector<std::uint8_t>& data);
@@ -31,9 +31,11 @@ private:
     std::vector<std::uint8_t> drain(bool final);
     RasterBlock rewriteRaster(const RasterBlock& block) const;
 
-    ComposeOptions m_options;
+    ChannelOffsetCorrectionOptions m_options;
     std::vector<std::uint8_t> m_pending;
     int m_currentColor = 0;
 };
+
+using PrnStreamRewriter = ChannelOffsetCorrector;
 
 } // namespace gutenrip::rip

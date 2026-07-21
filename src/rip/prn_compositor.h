@@ -18,7 +18,12 @@ enum class NozzleHalf {
     Back
 };
 
-struct ComposeOptions {
+struct ChannelOffsetCorrection {
+    int escColor = 0;
+    int leadingBlankRows = 0;
+};
+
+struct ChannelOffsetCorrectionOptions {
     LayerOrder layerOrder = LayerOrder::WhiteUnderColor;
     bool frontHalfPrintsFirst = false;
     std::uint8_t sourceLightCyanWhiteColor = 0x12;
@@ -29,7 +34,10 @@ struct ComposeOptions {
     int nozzles = 86;
     int nozzleSeparation = 2;
     int baseSeparation = 360;
+    std::vector<ChannelOffsetCorrection> channelCorrections;
 };
+
+using ComposeOptions = ChannelOffsetCorrectionOptions;
 
 struct ComposeResult {
     std::vector<std::uint8_t> bytes;
@@ -45,11 +53,18 @@ public:
     ComposeResult padBaseChannelsInSinglePrn(const std::vector<std::uint8_t>& prn,
                                              const ComposeOptions& options) const;
 
+    ComposeResult correctChannelOffsetsInSinglePrn(
+        const std::vector<std::uint8_t>& prn,
+        const ChannelOffsetCorrectionOptions& options) const;
+
 private:
     static RasterBlock padTo180Nozzles(const RasterBlock& source,
                                        NozzleHalf half,
                                        std::uint8_t outputColor,
                                        const ComposeOptions& options);
+    static RasterBlock prependBlankRows(const RasterBlock& source,
+                                        std::uint8_t outputColor,
+                                        int lines);
     static void setRasterColor(RasterBlock* block, std::uint8_t outputColor);
     static void setRasterLineCount(RasterBlock* block, int lines);
 };

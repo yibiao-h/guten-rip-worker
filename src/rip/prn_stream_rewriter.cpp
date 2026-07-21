@@ -58,6 +58,22 @@ bool isBaseChannelForLayer(int color, const ComposeOptions& options)
     return options.layerOrder == LayerOrder::WhiteUnderColor ? whiteChannel : !whiteChannel;
 }
 
+int channelCorrectionLines(int color, const ChannelOffsetCorrectionOptions& options)
+{
+    if (!options.channelCorrections.empty()) {
+        const auto it = std::find_if(
+            options.channelCorrections.begin(),
+            options.channelCorrections.end(),
+            [color](const ChannelOffsetCorrection& correction) {
+                return correction.escColor == color;
+            });
+        return it == options.channelCorrections.end()
+            ? 0
+            : std::max(0, it->leadingBlankRows);
+    }
+    return isBaseChannelForLayer(color, options) ? basePaddingLines(options) : 0;
+}
+
 void setRasterLineCount(RasterBlock* block, int lines)
 {
     if (block->kind == RasterCommandKind::EscI && block->header.size() >= 9) {
@@ -93,17 +109,17 @@ RasterBlock compressEscI(const RasterBlock& source)
 
 } // namespace
 
-PrnStreamRewriter::PrnStreamRewriter(ComposeOptions options)
+ChannelOffsetCorrector::ChannelOffsetCorrector(ChannelOffsetCorrectionOptions options)
     : m_options(std::move(options))
 {
 }
 
-std::vector<std::uint8_t> PrnStreamRewriter::append(const std::vector<std::uint8_t>& data)
+std::vector<std::uint8_t> ChannelOffsetCorrector::append(const std::vector<std::uint8_t>& data)
 {
     return append(data.data(), data.size());
 }
 
-std::vector<std::uint8_t> PrnStreamRewriter::append(const std::uint8_t* data, std::size_t size)
+std::vector<std::uint8_t> ChannelOffsetCorrector::append(const std::uint8_t* data, std::size_t size)
 {
     if (data && size > 0) {
         m_pending.insert(m_pending.end(), data, data + size);
@@ -111,7 +127,7 @@ std::vector<std::uint8_t> PrnStreamRewriter::append(const std::uint8_t* data, st
     return drain(false);
 }
 
-std::vector<std::uint8_t> PrnStreamRewriter::finish()
+std::vector<std::uint8_t> ChannelOffsetCorrector::finish()
 {
     std::vector<std::uint8_t> out = drain(true);
     out.insert(out.end(), m_pending.begin(), m_pending.end());
@@ -119,7 +135,7 @@ std::vector<std::uint8_t> PrnStreamRewriter::finish()
     return out;
 }
 
-std::vector<std::uint8_t> PrnStreamRewriter::drain(bool final)
+std::vector<std::uint8_t> ChannelOffsetCorrector::drain(bool final)
 {
     std::vector<std::uint8_t> out;
     for (;;) {
@@ -177,7 +193,7 @@ std::vector<std::uint8_t> PrnStreamRewriter::drain(bool final)
     }
 }
 
-PrnStreamRewriter::CommandState PrnStreamRewriter::tryTakeCommand(std::size_t offset,
+ChannelOffsetCorrector::CommandState ChannelOffsetCorrector::tryTakeCommand(std::size_t offset,
                                                                   RasterBlock* block,
                                                                   std::size_t* nextOffset,
                                                                   bool final) const
@@ -267,14 +283,14 @@ PrnStreamRewriter::CommandState PrnStreamRewriter::tryTakeCommand(std::size_t of
     return CommandState::Unsupported;
 }
 
-RasterBlock PrnStreamRewriter::rewriteRaster(const RasterBlock& block) const
+RasterBlock ChannelOffsetCorrector::rewriteRaster(const RasterBlock& block) const
 {
-    if (!isBaseChannelForLayer(block.color, m_options)) {
+    const int paddingLines = channelCorrectionLines(block.color, m_options);
+    if (paddingLines <= 0) {
         return block;
     }
 
     RasterBlock out = block;
-    const int paddingLines = basePaddingLines(m_options);
     const int outputLineCount = block.lineCount + paddingLines;
     setRasterLineCount(&out, outputLineCount);
 
