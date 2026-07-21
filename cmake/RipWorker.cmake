@@ -1,30 +1,9 @@
 find_package(Protobuf CONFIG QUIET)
 find_package(gRPC CONFIG QUIET)
+find_package(Threads REQUIRED)
 
 get_filename_component(GUTENRIP_WORKER_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(GUTENRIP_WORKER_HOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
-
-if (NOT TARGET yink_rip_core)
-    add_library(guten_rip_worker_support STATIC
-        "${GUTENRIP_WORKER_ROOT}/src/rip/escp_parser.cpp"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/escp_parser.h"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/packbits.cpp"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/packbits.h"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/prn_compositor.h"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/prn_stream_rewriter.cpp"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/prn_stream_rewriter.h"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/raw_interop_image.cpp"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/raw_interop_image.h"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/white_plate_generator.cpp"
-        "${GUTENRIP_WORKER_ROOT}/src/rip/white_plate_generator.h"
-    )
-    target_include_directories(guten_rip_worker_support PUBLIC
-        "${GUTENRIP_WORKER_ROOT}/src"
-    )
-    set(YINK_WORKER_SUPPORT_TARGET guten_rip_worker_support)
-else()
-    set(YINK_WORKER_SUPPORT_TARGET yink_rip_core)
-endif()
 
 if (Protobuf_FOUND AND gRPC_FOUND AND
     TARGET protobuf::protoc AND TARGET protobuf::libprotobuf AND
@@ -98,30 +77,24 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         )
 
         target_include_directories(guten-rip-worker PRIVATE
-            "${GUTENRIP_WORKER_HOST_ROOT}/src"
             "${GUTENRIP_WORKER_ROOT}/src"
             "${PRINT_ENGINE_INCLUDE_DIR}"
             "${PRINT_ENGINE_LIB_DIR}"
         )
 
         target_link_libraries(guten-rip-worker PRIVATE
-            ${YINK_WORKER_SUPPORT_TARGET}
             guten_rip_worker_proto
             "${PRINT_ENGINE_LIBRARY}"
+            Threads::Threads
         )
     elseif(BUILD_RIP_WORKER)
         message(STATUS "Skipping guten-rip-worker: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
 
-    if (BUILD_CORE_TESTS AND PRINT_ENGINE_LIBRARY AND
+    if (BUILD_CORE_TESTS AND PRINT_ENGINE_LIBRARY AND TARGET yink_rip_core AND
         EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_rip_worker_client.cpp")
         add_executable(test_rip_worker_client
             "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_rip_worker_client.cpp"
-            "${GUTENRIP_WORKER_HOST_ROOT}/src/core/cmyk_plane_preparer.cpp"
-            "${GUTENRIP_WORKER_HOST_ROOT}/src/core/print_driver_catalog.cpp"
-            "${GUTENRIP_WORKER_HOST_ROOT}/src/core/print_driver_catalog.h"
-            "${GUTENRIP_WORKER_HOST_ROOT}/src/core/rip_worker_client.cpp"
-            "${GUTENRIP_WORKER_HOST_ROOT}/src/core/rip_worker_client.h"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.cpp"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.h"
         )
@@ -138,10 +111,10 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         )
 
         target_link_libraries(test_rip_worker_client PRIVATE
-            ${YINK_WORKER_SUPPORT_TARGET}
+            yink_rip_core
             guten_rip_worker_proto
-            lcms::lcms
             "${PRINT_ENGINE_LIBRARY}"
+            Threads::Threads
         )
 
         if (WIN32)
