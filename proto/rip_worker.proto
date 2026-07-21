@@ -57,6 +57,7 @@ message ComposeSettings {
   int32 base_separation = 9;
   repeated int32 base_channel_colors = 10;
   repeated string channel_mapping = 11;
+  string print_content_mode = 12;
 }
 
 message RenderPlaneStreamStart {

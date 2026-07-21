@@ -919,6 +919,7 @@ struct ResolvedChannel {
 struct ResolvedChannelLayout {
     bool ok = false;
     std::string error;
+    bool offsetCorrectionEnabled = true;
     int physicalNozzles = 0;
     int activeNozzles = 0;
     int nozzleSeparation = 0;
@@ -928,7 +929,7 @@ struct ResolvedChannelLayout {
 bool isLogicalInk(const std::string& source)
 {
     return source == "C" || source == "M" || source == "Y" ||
-           source == "K" || source == "W";
+           source == "K" || source == "W" || source == "Off";
 }
 
 std::vector<std::string> defaultChannelMapping(const std::string& driver)
@@ -999,7 +1000,12 @@ ResolvedChannelLayout resolveChannelLayout(
 
     result.physicalNozzles = printer->nozzles;
     result.nozzleSeparation = printer->nozzle_separation;
-    result.activeNozzles = resolution.find("720x1440") != std::string::npos ? 83 : 86;
+    const bool combinedPrint = settings.print_content_mode().empty() ||
+        settings.print_content_mode() == "WhiteAndColor";
+    result.offsetCorrectionEnabled = combinedPrint;
+    result.activeNozzles = combinedPrint
+        ? (resolution.find("720x1440") != std::string::npos ? 83 : 86)
+        : result.physicalNozzles;
     if (result.physicalNozzles <= 0 || result.nozzleSeparation <= 0 ||
         result.activeNozzles <= 0 || result.activeNozzles > result.physicalNozzles) {
         result.error = "Resolved nozzle geometry is invalid.";
@@ -1757,11 +1763,14 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     stp_set_width(vars, std::max<stp_dimension_t>(1.0, mmToPoints(layoutContext.imageWidthMM)));
     stp_set_height(vars, std::max<stp_dimension_t>(1.0, mmToPoints(layoutContext.imageHeightMM)));
 
-    yink::rip::ChannelOffsetCorrector offsetCorrector(
-        correctionOptionsForLayout(start.compose(), channelLayout));
+    std::unique_ptr<yink::rip::ChannelOffsetCorrector> offsetCorrector;
+    if (channelLayout.offsetCorrectionEnabled) {
+        offsetCorrector = std::make_unique<yink::rip::ChannelOffsetCorrector>(
+            correctionOptionsForLayout(start.compose(), channelLayout));
+    }
     OutputContext outputCtx;
     outputCtx.stream = stream;
-    outputCtx.offsetCorrector = &offsetCorrector;
+    outputCtx.offsetCorrector = offsetCorrector.get();
     stp_set_outfunc(vars, outputFunc);
     stp_set_outdata(vars, &outputCtx);
 
@@ -1785,6 +1794,9 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                    << " density=" << rawDensity
                    << " inkLimit=" << rawInkLimit
                    << " rawChannelDensities=" << rawChannelDensitySummary(channelDensities)
+                   << " activeNozzles=" << channelLayout.activeNozzles
+                   << " channelOffsetCorrection="
+                   << (channelLayout.offsetCorrectionEnabled ? "true" : "false")
                    << " escIFeatherEdge=" << rawEscIFeatherEdge
                    << " bandEnhancement=" << bandEnhancement
                    << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
@@ -1796,8 +1808,10 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     appendWorkerRuntimeLog(streamBeginMessage);
 
     const int printResult = stp_print(vars, &image);
-    const auto tail = offsetCorrector.finish();
-    (void)writeOutputBytes(&outputCtx, tail);
+    if (offsetCorrector) {
+        const auto tail = offsetCorrector->finish();
+        (void)writeOutputBytes(&outputCtx, tail);
+    }
 
     std::ostringstream streamDoneLog;
     streamDoneLog << "[guten-rip-worker] RenderPlaneStream stp_print returned"
@@ -1841,6 +1855,9 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                  ", InkLimit=" + std::to_string(rawInkLimit) +
                  ", OutputInkLimit=" + std::to_string(outputInkLimit) +
                  ", RawChannelDensities=" + rawChannelDensitySummary(channelDensities) +
+                 ", ActiveNozzles=" + std::to_string(channelLayout.activeNozzles) +
+                 ", ChannelOffsetCorrection=" +
+                     (channelLayout.offsetCorrectionEnabled ? "true" : "false") +
                  ", EscIFeatherEdge=" + std::to_string(rawEscIFeatherEdge) +
                  ", source=" + layoutContext.sourceInputImageType + ".",
              outputCtx.bytesWritten);
