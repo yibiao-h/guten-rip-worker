@@ -1043,6 +1043,9 @@ void applyChannelLayout(stp_vars_t* vars, const ResolvedChannelLayout& layout)
         setIntParameter(vars,
                         ("RawHeadOffset" + suffix).c_str(),
                         layout.channels[i].runtimeHeadOffset);
+        setIntParameter(vars,
+                        ("RawChannelCorrectionRows" + suffix).c_str(),
+                        layout.channels[i].correctionRows);
         setFloatParameter(vars,
                           ("RawChannelDensity" + suffix).c_str(),
                           layout.channels[i].density);
