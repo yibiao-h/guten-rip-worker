@@ -734,6 +734,35 @@ double boundedDoubleSetting(const gutenrip::worker::RenderPlaneRequest* request,
     return std::clamp(value, minimum, maximum);
 }
 
+std::vector<double> rawChannelDensities(
+    const gutenrip::worker::RenderPlaneRequest* request,
+    std::size_t channelCount)
+{
+    std::vector<double> result;
+    result.reserve(channelCount);
+    for (std::size_t i = 0; i < channelCount; ++i) {
+        result.push_back(boundedDoubleSetting(
+            request,
+            "RawChannelDensity" + std::to_string(i),
+            1.0,
+            0.0,
+            1.0));
+    }
+    return result;
+}
+
+std::string rawChannelDensitySummary(const std::vector<double>& densities)
+{
+    std::ostringstream summary;
+    for (std::size_t i = 0; i < densities.size(); ++i) {
+        if (i != 0) {
+            summary << ',';
+        }
+        summary << densities[i];
+    }
+    return summary.str();
+}
+
 bool rawChannelHasNonZero(const LayoutImageContext& context, std::size_t channel)
 {
     if (context.rawChannelCount == 0 || channel >= context.rawChannelCount || context.rawPixels.empty()) {
@@ -925,30 +954,12 @@ const inkname_t* physicalInkName(stp_vars_t* vars)
     return nullptr;
 }
 
-double densityForSource(const std::string& source,
-                        double cyan,
-                        double magenta,
-                        double yellow,
-                        double black,
-                        double white)
-{
-    if (source == "C") return cyan;
-    if (source == "M") return magenta;
-    if (source == "Y") return yellow;
-    if (source == "K") return black;
-    return white;
-}
-
 ResolvedChannelLayout resolveChannelLayout(
     stp_vars_t* vars,
     const std::string& driver,
     const std::string& resolution,
     const gutenrip::worker::ComposeSettings& settings,
-    double cyanDensity,
-    double magentaDensity,
-    double yellowDensity,
-    double blackDensity,
-    double whiteDensity)
+    const std::vector<double>& channelDensities)
 {
     ResolvedChannelLayout result;
     const stpi_escp2_printer_t* printer = stpi_escp2_get_printer(vars);
@@ -973,6 +984,10 @@ ResolvedChannelLayout resolveChannelLayout(
     }
     if (mapping.size() != static_cast<std::size_t>(physicalChannelCount)) {
         result.error = "Channel mapping count does not match the physical raw channel count.";
+        return result;
+    }
+    if (channelDensities.size() != static_cast<std::size_t>(physicalChannelCount)) {
+        result.error = "Raw channel density count does not match the physical raw channel count.";
         return result;
     }
     for (const auto& source : mapping) {
@@ -1009,12 +1024,7 @@ ResolvedChannelLayout resolveChannelLayout(
             resolved.physicalHeadOffset = subchannel.head_offset;
             resolved.runtimeHeadOffset = offsetChannel ? automaticHeadOffset : 0;
             resolved.correctionRows = resolved.runtimeHeadOffset / result.nozzleSeparation;
-            resolved.density = densityForSource(source,
-                                                cyanDensity,
-                                                magentaDensity,
-                                                yellowDensity,
-                                                blackDensity,
-                                                whiteDensity);
+            resolved.density = channelDensities[static_cast<std::size_t>(physicalIndex)];
             result.channels.push_back(std::move(resolved));
             ++physicalIndex;
         }
@@ -1410,11 +1420,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     const bool rawHasColorInk = loadedSource && rawChannelsHaveNonZero(layoutContext, 0u, 4u);
     const bool rawHasWhiteInk = loadedSource && rawChannelsHaveNonZero(layoutContext, 4u, 6u);
     const double rawInkLimit = outputInkLimit;
-    const double rawCyanDensity = boundedDoubleSetting(request, "CyanDensity", 1.0, 0.0, 1.0);
-    const double rawMagentaDensity = boundedDoubleSetting(request, "MagentaDensity", 1.0, 0.0, 1.0);
-    const double rawYellowDensity = boundedDoubleSetting(request, "YellowDensity", 1.0, 0.0, 1.0);
-    const double rawBlackDensity = boundedDoubleSetting(request, "BlackDensity", 1.0, 0.0, 1.0);
-    const double rawGlossDensity = boundedDoubleSetting(request, "GlossDensity", 1.0, 0.0, 1.0);
+    const auto channelDensities = rawChannelDensities(request, layoutContext.rawChannelCount);
     const PrintedDpi printedDpi = activePrintedDpiForResolution(vars, resolution);
     const double rawEscIFeatherEdge =
         escIFeatherEdgeForResolution(
@@ -1442,11 +1448,11 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
     setIntParameter(vars, "BandEnhancement", bandEnhancement);
     setFloatParameter(vars, "Density", rawDensity);
     setFloatParameter(vars, "InkLimit", rawInkLimit);
-    setFloatParameter(vars, "CyanDensity", rawCyanDensity);
-    setFloatParameter(vars, "MagentaDensity", rawMagentaDensity);
-    setFloatParameter(vars, "YellowDensity", rawYellowDensity);
-    setFloatParameter(vars, "BlackDensity", rawBlackDensity);
-    setFloatParameter(vars, "GlossDensity", rawGlossDensity);
+    for (std::size_t i = 0; i < channelDensities.size(); ++i) {
+        setFloatParameter(vars,
+                          ("RawChannelDensity" + std::to_string(i)).c_str(),
+                          channelDensities[i]);
+    }
     setFloatParameter(vars, "EscIFeatherEdge", rawEscIFeatherEdge);
     setFloatParameter(vars, "Brightness", doubleSetting(request, "Brightness", 1.0));
     setFloatParameter(vars, "Contrast", doubleSetting(request, "Contrast", 1.0));
@@ -1511,9 +1517,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
               << " density=" << rawDensity
               << " inkLimit=" << rawInkLimit
               << " outputInkLimit=" << outputInkLimit
-              << " cmykDensity=" << rawCyanDensity << "," << rawMagentaDensity
-              << "," << rawYellowDensity << "," << rawBlackDensity
-              << " glossDensity=" << rawGlossDensity
+              << " rawChannelDensities=" << rawChannelDensitySummary(channelDensities)
               << " escIFeatherEdge=" << rawEscIFeatherEdge
               << " bandEnhancement=" << bandEnhancement
               << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
@@ -1570,11 +1574,7 @@ grpc::Status RipWorkerService::RenderPlane(grpc::ServerContext* context,
                             ", Density=" + std::to_string(rawDensity) +
                             ", InkLimit=" + std::to_string(rawInkLimit) +
                             ", OutputInkLimit=" + std::to_string(outputInkLimit) +
-                            ", CyanDensity=" + std::to_string(rawCyanDensity) +
-                            ", MagentaDensity=" + std::to_string(rawMagentaDensity) +
-                            ", YellowDensity=" + std::to_string(rawYellowDensity) +
-                            ", BlackDensity=" + std::to_string(rawBlackDensity) +
-                            ", GlossDensity=" + std::to_string(rawGlossDensity) +
+                            ", RawChannelDensities=" + rawChannelDensitySummary(channelDensities) +
                             ", source=" + layoutContext.sourceInputImageType + ".");
     response->set_output_path(request->output_path());
     response->set_bytes_written(outputCtx.bytesWritten);
@@ -1691,11 +1691,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     const bool rawHasColorInk = false;
     const bool rawHasWhiteInk = false;
     const double rawInkLimit = outputInkLimit;
-    const double rawCyanDensity = boundedDoubleSetting(&request, "CyanDensity", 1.0, 0.0, 1.0);
-    const double rawMagentaDensity = boundedDoubleSetting(&request, "MagentaDensity", 1.0, 0.0, 1.0);
-    const double rawYellowDensity = boundedDoubleSetting(&request, "YellowDensity", 1.0, 0.0, 1.0);
-    const double rawBlackDensity = boundedDoubleSetting(&request, "BlackDensity", 1.0, 0.0, 1.0);
-    const double rawGlossDensity = boundedDoubleSetting(&request, "GlossDensity", 1.0, 0.0, 1.0);
+    const auto channelDensities = rawChannelDensities(&request, layoutContext.rawChannelCount);
     const PrintedDpi printedDpi = activePrintedDpiForResolution(vars, resolution);
     const double rawEscIFeatherEdge =
         escIFeatherEdgeForResolution(
@@ -1723,11 +1719,6 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     setIntParameter(vars, "BandEnhancement", bandEnhancement);
     setFloatParameter(vars, "Density", rawDensity);
     setFloatParameter(vars, "InkLimit", rawInkLimit);
-    setFloatParameter(vars, "CyanDensity", rawCyanDensity);
-    setFloatParameter(vars, "MagentaDensity", rawMagentaDensity);
-    setFloatParameter(vars, "YellowDensity", rawYellowDensity);
-    setFloatParameter(vars, "BlackDensity", rawBlackDensity);
-    setFloatParameter(vars, "GlossDensity", rawGlossDensity);
     setFloatParameter(vars, "EscIFeatherEdge", rawEscIFeatherEdge);
     setFloatParameter(vars, "Brightness", doubleSetting(&request, "Brightness", 1.0));
     setFloatParameter(vars, "Contrast", doubleSetting(&request, "Contrast", 1.0));
@@ -1739,11 +1730,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
         printerDriver,
         resolution,
         start.compose(),
-        rawCyanDensity,
-        rawMagentaDensity,
-        rawYellowDensity,
-        rawBlackDensity,
-        rawGlossDensity);
+        channelDensities);
     if (!channelLayout.ok) {
         stp_vars_destroy(vars);
         sendDone(false, channelLayout.error, 0);
@@ -1792,6 +1779,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                    << " ditherAlgorithm=" << ditherAlgorithm
                    << " density=" << rawDensity
                    << " inkLimit=" << rawInkLimit
+                   << " rawChannelDensities=" << rawChannelDensitySummary(channelDensities)
                    << " escIFeatherEdge=" << rawEscIFeatherEdge
                    << " bandEnhancement=" << bandEnhancement
                    << " rawHasColorInk=" << (rawHasColorInk ? "true" : "false")
@@ -1847,11 +1835,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                  ", Density=" + std::to_string(rawDensity) +
                  ", InkLimit=" + std::to_string(rawInkLimit) +
                  ", OutputInkLimit=" + std::to_string(outputInkLimit) +
-                 ", CyanDensity=" + std::to_string(rawCyanDensity) +
-                 ", MagentaDensity=" + std::to_string(rawMagentaDensity) +
-                 ", YellowDensity=" + std::to_string(rawYellowDensity) +
-                 ", BlackDensity=" + std::to_string(rawBlackDensity) +
-                 ", GlossDensity=" + std::to_string(rawGlossDensity) +
+                 ", RawChannelDensities=" + rawChannelDensitySummary(channelDensities) +
                  ", EscIFeatherEdge=" + std::to_string(rawEscIFeatherEdge) +
                  ", source=" + layoutContext.sourceInputImageType + ".",
              outputCtx.bytesWritten);
