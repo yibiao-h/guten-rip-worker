@@ -919,6 +919,7 @@ struct ResolvedChannel {
 struct ResolvedChannelLayout {
     bool ok = false;
     std::string error;
+    bool runtimeGeometryEnabled = true;
     bool offsetCorrectionEnabled = true;
     int physicalNozzles = 0;
     int activeNozzles = 0;
@@ -1002,6 +1003,7 @@ ResolvedChannelLayout resolveChannelLayout(
     result.nozzleSeparation = printer->nozzle_separation;
     const bool combinedPrint = settings.print_content_mode().empty() ||
         settings.print_content_mode() == "WhiteAndColor";
+    result.runtimeGeometryEnabled = combinedPrint;
     result.offsetCorrectionEnabled = combinedPrint;
     result.activeNozzles = combinedPrint
         ? (resolution.find("720x1440") != std::string::npos ? 83 : 86)
@@ -1014,24 +1016,26 @@ ResolvedChannelLayout resolveChannelLayout(
 
     const int automaticHeadOffset =
         (result.physicalNozzles - result.activeNozzles) * result.nozzleSeparation;
-    const bool whiteOverColor = settings.layer_order() == "WhiteOverColor";
     int physicalIndex = 0;
     for (unsigned int i = 0; i < inkName->channel_count; ++i) {
         const ink_channel_t& channel = inkName->channels[i];
         for (unsigned int j = 0; j < channel.n_subchannels; ++j) {
             const physical_subchannel_t& subchannel = channel.subchannels[j];
             const std::string& source = mapping[static_cast<std::size_t>(physicalIndex)];
-            const bool white = source == "W";
-            const bool offsetChannel = whiteOverColor ? white : !white;
 
             ResolvedChannel resolved;
             resolved.source = source;
             resolved.escColor = escIColorForSubchannel(subchannel);
             resolved.physicalHeadOffset = subchannel.head_offset;
-            resolved.runtimeHeadOffset = offsetChannel ? automaticHeadOffset : 0;
-            resolved.correctionRows = resolved.runtimeHeadOffset == 0
-                ? automaticHeadOffset / result.nozzleSeparation
-                : 0;
+            if (result.runtimeGeometryEnabled) {
+                const bool white = source == "W";
+                const bool whiteOverColor = settings.layer_order() == "WhiteOverColor";
+                const bool offsetChannel = whiteOverColor ? white : !white;
+                resolved.runtimeHeadOffset = offsetChannel ? automaticHeadOffset : 0;
+                resolved.correctionRows = resolved.runtimeHeadOffset == 0
+                    ? automaticHeadOffset / result.nozzleSeparation
+                    : 0;
+            }
             resolved.density = channelDensities[static_cast<std::size_t>(physicalIndex)];
             result.channels.push_back(std::move(resolved));
             ++physicalIndex;
@@ -1043,15 +1047,19 @@ ResolvedChannelLayout resolveChannelLayout(
 
 void applyChannelLayout(stp_vars_t* vars, const ResolvedChannelLayout& layout)
 {
-    setIntParameter(vars, "RawActiveNozzles", layout.activeNozzles);
+    if (layout.runtimeGeometryEnabled) {
+        setIntParameter(vars, "RawActiveNozzles", layout.activeNozzles);
+    }
     for (std::size_t i = 0; i < layout.channels.size(); ++i) {
         const std::string suffix = std::to_string(i);
-        setIntParameter(vars,
-                        ("RawHeadOffset" + suffix).c_str(),
-                        layout.channels[i].runtimeHeadOffset);
-        setIntParameter(vars,
-                        ("RawChannelCorrectionRows" + suffix).c_str(),
-                        layout.channels[i].correctionRows);
+        if (layout.runtimeGeometryEnabled) {
+            setIntParameter(vars,
+                            ("RawHeadOffset" + suffix).c_str(),
+                            layout.channels[i].runtimeHeadOffset);
+            setIntParameter(vars,
+                            ("RawChannelCorrectionRows" + suffix).c_str(),
+                            layout.channels[i].correctionRows);
+        }
         setFloatParameter(vars,
                           ("RawChannelDensity" + suffix).c_str(),
                           layout.channels[i].density);
@@ -1795,6 +1803,8 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                    << " inkLimit=" << rawInkLimit
                    << " rawChannelDensities=" << rawChannelDensitySummary(channelDensities)
                    << " activeNozzles=" << channelLayout.activeNozzles
+                   << " runtimeGeometry="
+                   << (channelLayout.runtimeGeometryEnabled ? "true" : "false")
                    << " channelOffsetCorrection="
                    << (channelLayout.offsetCorrectionEnabled ? "true" : "false")
                    << " escIFeatherEdge=" << rawEscIFeatherEdge
@@ -1856,6 +1866,8 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                  ", OutputInkLimit=" + std::to_string(outputInkLimit) +
                  ", RawChannelDensities=" + rawChannelDensitySummary(channelDensities) +
                  ", ActiveNozzles=" + std::to_string(channelLayout.activeNozzles) +
+                 ", RuntimeGeometry=" +
+                     (channelLayout.runtimeGeometryEnabled ? "true" : "false") +
                  ", ChannelOffsetCorrection=" +
                      (channelLayout.offsetCorrectionEnabled ? "true" : "false") +
                  ", EscIFeatherEdge=" + std::to_string(rawEscIFeatherEdge) +
