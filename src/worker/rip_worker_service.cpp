@@ -194,6 +194,8 @@ bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
     const std::string text((std::istreambuf_iterator<char>(in)),
                            std::istreambuf_iterator<char>());
     return text.find("escp2-l18050") != std::string::npos &&
+           text.find("escp2-et2750") != std::string::npos &&
+           text.find("model=\"901\"") != std::string::npos &&
            text.find("escp2-et8550") != std::string::npos;
 }
 
@@ -330,7 +332,7 @@ const inkname_t* physicalInkName(stp_vars_t* vars)
     }
     for (unsigned int i = 0; i < inkList->n_inks; ++i) {
         if (inkList->inknames[i].name &&
-            std::strcmp(inkList->inknames[i].name, "Physical6") == 0) {
+            std::strncmp(inkList->inknames[i].name, "Physical", 8) == 0) {
             return &inkList->inknames[i];
         }
     }
@@ -366,6 +368,11 @@ void addCatalogDriver(const std::string& driverId,
         stp_vars_destroy(vars);
         return;
     }
+
+    stp_set_string_parameter(vars,
+                             "RawChannels",
+                             std::to_string(inkName->channel_count).c_str());
+    stp_set_string_parameter(vars, "InkType", inkName->name);
 
     auto* profile = response->add_drivers();
     profile->set_printer_label(stp_printer_get_long_name(printer)

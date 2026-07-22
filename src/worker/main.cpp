@@ -42,6 +42,8 @@ bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
     const std::string text((std::istreambuf_iterator<char>(in)),
                            std::istreambuf_iterator<char>());
     return text.find("escp2-l18050") != std::string::npos &&
+           text.find("escp2-et2750") != std::string::npos &&
+           text.find("model=\"901\"") != std::string::npos &&
            text.find("escp2-et8550") != std::string::npos;
 }
 
