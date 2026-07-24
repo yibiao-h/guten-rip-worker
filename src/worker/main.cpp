@@ -31,20 +31,9 @@ void setEnv(const char* name, const std::filesystem::path& value)
 bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
 {
     const std::filesystem::path escp2 = dataPath / "printers" / "escp2.xml";
-    if (!std::filesystem::exists(escp2)) {
-        return false;
-    }
-
-    std::ifstream in(escp2, std::ios::binary);
-    if (!in) {
-        return false;
-    }
-    const std::string text((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
-    return text.find("escp2-l18050") != std::string::npos &&
-           text.find("escp2-et2750") != std::string::npos &&
-           text.find("model=\"901\"") != std::string::npos &&
-           text.find("escp2-et8550") != std::string::npos;
+    std::error_code ec;
+    return std::filesystem::is_regular_file(escp2, ec) && !ec &&
+           std::filesystem::file_size(escp2, ec) > 0 && !ec;
 }
 
 void configureGutenprintDataPath(const char* executablePath)

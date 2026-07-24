@@ -131,7 +131,7 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 
 namespace {
 
-constexpr std::uint32_t kProtocolVersion = 2;
+constexpr std::uint32_t kProtocolVersion = 3;
 constexpr int kMaximumRuntimeOffset = 359;
 constexpr int kMaximumRawChannels = 32;
 
@@ -183,20 +183,9 @@ void setEnv(const char* name, const std::filesystem::path& value)
 bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
 {
     const std::filesystem::path escp2 = dataPath / "printers" / "escp2.xml";
-    if (!std::filesystem::exists(escp2)) {
-        return false;
-    }
-
-    std::ifstream in(escp2, std::ios::binary);
-    if (!in) {
-        return false;
-    }
-    const std::string text((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
-    return text.find("escp2-l18050") != std::string::npos &&
-           text.find("escp2-et2750") != std::string::npos &&
-           text.find("model=\"901\"") != std::string::npos &&
-           text.find("escp2-et8550") != std::string::npos;
+    std::error_code ec;
+    return std::filesystem::is_regular_file(escp2, ec) && !ec &&
+           std::filesystem::file_size(escp2, ec) > 0 && !ec;
 }
 
 std::filesystem::path executableDir()
@@ -317,9 +306,7 @@ void primeCatalogVars(stp_vars_t* vars)
     stp_set_string_parameter(vars, "MediaType", "ColorOffset");
     stp_set_string_parameter(vars, "PrintingMode", "Color");
     stp_set_string_parameter(vars, "InputImageType", "Raw");
-    stp_set_string_parameter(vars, "RawChannels", "6");
     stp_set_string_parameter(vars, "InkSet", "Physical");
-    stp_set_string_parameter(vars, "InkType", "Physical6");
     stp_set_string_parameter(vars, "ColorCorrection", "Density");
     stp_set_string_parameter(vars, "DitherAlgorithm", "Adaptive");
 }
@@ -379,7 +366,6 @@ void addCatalogDriver(const std::string& driverId,
                                    ? stp_printer_get_long_name(printer)
                                    : driverId);
     profile->set_driver(driverId);
-    profile->set_model_id(stp_printer_get_model(printer));
     profile->set_nozzles(escp2->nozzles);
     profile->set_nozzle_separation(escp2->nozzle_separation);
     profile->set_base_separation(escp2->base_separation);

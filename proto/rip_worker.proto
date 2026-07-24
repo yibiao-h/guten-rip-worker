@@ -29,7 +29,8 @@ message PhysicalChannelProfile {
 message PrintDriverProfile {
   string printer_label = 1;
   string driver = 2;
-  int32 model_id = 3;
+  reserved 3;
+  reserved "model_id";
   repeated DriverResolution resolutions = 4;
   int32 nozzles = 5;
   int32 nozzle_separation = 6;
