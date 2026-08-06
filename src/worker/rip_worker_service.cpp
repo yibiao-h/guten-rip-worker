@@ -131,7 +131,7 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 
 namespace {
 
-constexpr std::uint32_t kProtocolVersion = 3;
+constexpr std::uint32_t kProtocolVersion = 4;
 constexpr int kMaximumRuntimeOffset = 359;
 constexpr int kMaximumRawChannels = 32;
 
@@ -435,7 +435,7 @@ bool validateSettings(const gutenrip::worker::PrintEngineSettings& settings,
     }
 
     const double finiteValues[] = {
-        settings.density(), settings.ink_limit(), settings.esc_i_feather_edge(),
+        settings.density(), settings.esc_i_feather_edge(),
         settings.brightness(), settings.contrast(), settings.saturation(), settings.gamma(),
     };
     for (const double value : finiteValues) {
@@ -445,7 +445,6 @@ bool validateSettings(const gutenrip::worker::PrintEngineSettings& settings,
         }
     }
     if (settings.density() < 0.0 || settings.density() > 1.0 ||
-        settings.ink_limit() <= 0.0 || settings.ink_limit() > 64.0 ||
         settings.esc_i_feather_edge() < 0.0 || settings.esc_i_feather_edge() > 1.0) {
         if (error) *error = "Print engine settings are outside supported bounds.";
         return false;
@@ -542,7 +541,6 @@ void applySettings(stp_vars_t* vars,
     setStringParameter(vars, "Weave", settings.weave());
     stp_set_int_parameter(vars, "BandEnhancement", settings.band_enhancement());
     stp_set_float_parameter(vars, "Density", settings.density());
-    stp_set_float_parameter(vars, "InkLimit", settings.ink_limit());
     stp_set_float_parameter(vars, "EscIFeatherEdge", settings.esc_i_feather_edge());
     stp_set_float_parameter(vars, "Brightness", settings.brightness());
     stp_set_float_parameter(vars, "Contrast", settings.contrast());
@@ -792,7 +790,6 @@ grpc::Status RipWorkerService::RenderPlaneStream(
              << " imagePx=" << imageContext.width << 'x' << imageContext.height
              << " rawChannels=" << imageContext.channels
              << " resolution=" << start.settings().resolution()
-             << " inkLimit=" << start.settings().ink_limit()
              << " runtimeGeometry=" << (start.settings().has_active_nozzles() ? "true" : "false")
              << " STP_DATA_PATH="
              << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "");

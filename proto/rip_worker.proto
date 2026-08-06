@@ -71,6 +71,8 @@ message RawChannelRuntime {
 }
 
 message PrintEngineSettings {
+  reserved 19;
+  reserved "ink_limit";
   string page_size = 1;
   string input_slot = 2;
   string duplex = 3;
@@ -89,7 +91,6 @@ message PrintEngineSettings {
   string weave = 16;
   int32 band_enhancement = 17;
   double density = 18;
-  double ink_limit = 19;
   double esc_i_feather_edge = 20;
   double brightness = 21;
   double contrast = 22;
