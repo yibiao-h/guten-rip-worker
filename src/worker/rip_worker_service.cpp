@@ -131,7 +131,7 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 
 namespace {
 
-constexpr std::uint32_t kProtocolVersion = 5;
+constexpr std::uint32_t kProtocolVersion = 6;
 constexpr int kMaximumRuntimeOffset = 359;
 constexpr int kMaximumRawChannels = 32;
 
@@ -278,6 +278,15 @@ void addStringOptions(stp_vars_t* vars,
     stp_parameter_description_destroy(&description);
 }
 
+void addDefaultOption(
+    google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output)
+{
+    if (!output || !output->empty()) return;
+    auto* item = output->Add();
+    item->set_value("Default");
+    item->set_label("Default");
+}
+
 bool featherSupported(stp_vars_t* vars)
 {
     if (!vars) return false;
@@ -318,8 +327,12 @@ void addResolutionProfile(stp_vars_t* vars,
                                   ? resolution->printed_vres
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
+    addStringOptions(vars, "InputSlot", output->mutable_input_slot_options());
+    addDefaultOption(output->mutable_input_slot_options());
     addStringOptions(vars, "DitherAlgorithm", output->mutable_dither_options());
     addStringOptions(vars, "Weave", output->mutable_weave_options());
+    addStringOptions(vars, "PrintingDirection",
+                     output->mutable_printing_direction_options());
     output->set_feather_supported(featherSupported(vars));
 }
 
@@ -340,7 +353,6 @@ void fillResolutions(stp_vars_t* vars, gutenrip::worker::PrintDriverProfile* pro
 void primeCatalogVars(stp_vars_t* vars)
 {
     stp_set_string_parameter(vars, "PageSize", "Custom");
-    stp_set_string_parameter(vars, "InputSlot", "Rear");
     stp_set_string_parameter(vars, "MediaType", "ColorOffset");
     stp_set_string_parameter(vars, "PrintingMode", "Color");
     stp_set_string_parameter(vars, "InputImageType", "Raw");
@@ -561,7 +573,9 @@ void applySettings(stp_vars_t* vars,
                    int rawChannels)
 {
     setStringParameter(vars, "PageSize", settings.page_size());
-    setStringParameter(vars, "InputSlot", settings.input_slot());
+    if (settings.input_slot() != "Default") {
+        setStringParameter(vars, "InputSlot", settings.input_slot());
+    }
     setStringParameter(vars, "Duplex", settings.duplex());
     setStringParameter(vars, "CDInnerRadius", settings.cd_inner_radius());
     setStringParameter(vars, "MediaType", settings.media_type());
@@ -733,6 +747,7 @@ grpc::Status RipWorkerService::GetPrintDriverCatalog(
     gutenrip::worker::PrintDriverCatalog* response)
 {
     (void)context;
+    response->set_protocol_version(kProtocolVersion);
     if (!request || request->driver_ids_size() == 0) {
         response->add_warnings("No print driver ids were requested.");
         return grpc::Status::OK;

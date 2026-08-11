@@ -26,6 +26,8 @@ message DriverResolution {
   repeated PrintOption dither_options = 8;
   repeated PrintOption weave_options = 9;
   bool feather_supported = 10;
+  repeated PrintOption input_slot_options = 11;
+  repeated PrintOption printing_direction_options = 12;
 }
 
 message PhysicalChannelProfile {
@@ -54,6 +56,7 @@ message PrintDriverCatalogRequest {
 message PrintDriverCatalog {
   repeated PrintDriverProfile drivers = 1;
   repeated string warnings = 2;
+  uint32 protocol_version = 3;
 }
 
 message PageGeometryPoints {
