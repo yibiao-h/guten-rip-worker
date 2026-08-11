@@ -258,7 +258,8 @@ int intParameterForResolution(stp_vars_t* vars,
 
 void addStringOptions(stp_vars_t* vars,
                       const char* parameter,
-                      google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output)
+                      google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output,
+                      bool explicitDirectionsOnly = false)
 {
     if (!vars || !parameter || !output) return;
     stp_parameter_t description;
@@ -269,6 +270,11 @@ void addStringOptions(stp_vars_t* vars,
         for (size_t i = 0; i < count; ++i) {
             const auto* option = stp_string_list_param(description.bounds.str, i);
             if (!option || !option->name || option->name[0] == '\0') continue;
+            if (explicitDirectionsOnly &&
+                std::strcmp(option->name, "Bidirectional") != 0 &&
+                std::strcmp(option->name, "Unidirectional") != 0) {
+                continue;
+            }
             auto* item = output->Add();
             item->set_value(option->name);
             item->set_label(option->text && option->text[0] != '\0'
@@ -276,15 +282,6 @@ void addStringOptions(stp_vars_t* vars,
         }
     }
     stp_parameter_description_destroy(&description);
-}
-
-void addDefaultOption(
-    google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output)
-{
-    if (!output || !output->empty()) return;
-    auto* item = output->Add();
-    item->set_value("Default");
-    item->set_label("Default");
 }
 
 bool featherSupported(stp_vars_t* vars)
@@ -328,11 +325,10 @@ void addResolutionProfile(stp_vars_t* vars,
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
     addStringOptions(vars, "InputSlot", output->mutable_input_slot_options());
-    addDefaultOption(output->mutable_input_slot_options());
     addStringOptions(vars, "DitherAlgorithm", output->mutable_dither_options());
     addStringOptions(vars, "Weave", output->mutable_weave_options());
     addStringOptions(vars, "PrintingDirection",
-                     output->mutable_printing_direction_options());
+                     output->mutable_printing_direction_options(), true);
     output->set_feather_supported(featherSupported(vars));
 }
 
@@ -573,9 +569,7 @@ void applySettings(stp_vars_t* vars,
                    int rawChannels)
 {
     setStringParameter(vars, "PageSize", settings.page_size());
-    if (settings.input_slot() != "Default") {
-        setStringParameter(vars, "InputSlot", settings.input_slot());
-    }
+    setStringParameter(vars, "InputSlot", settings.input_slot());
     setStringParameter(vars, "Duplex", settings.duplex());
     setStringParameter(vars, "CDInnerRadius", settings.cd_inner_radius());
     setStringParameter(vars, "MediaType", settings.media_type());
