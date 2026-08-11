@@ -131,7 +131,7 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 
 namespace {
 
-constexpr std::uint32_t kProtocolVersion = 4;
+constexpr std::uint32_t kProtocolVersion = 5;
 constexpr int kMaximumRuntimeOffset = 359;
 constexpr int kMaximumRawChannels = 32;
 
@@ -256,6 +256,41 @@ int intParameterForResolution(stp_vars_t* vars,
     return 0;
 }
 
+void addStringOptions(stp_vars_t* vars,
+                      const char* parameter,
+                      google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output)
+{
+    if (!vars || !parameter || !output) return;
+    stp_parameter_t description;
+    std::memset(&description, 0, sizeof(description));
+    stp_describe_parameter(vars, parameter, &description);
+    if (description.bounds.str) {
+        const size_t count = stp_string_list_count(description.bounds.str);
+        for (size_t i = 0; i < count; ++i) {
+            const auto* option = stp_string_list_param(description.bounds.str, i);
+            if (!option || !option->name || option->name[0] == '\0') continue;
+            auto* item = output->Add();
+            item->set_value(option->name);
+            item->set_label(option->text && option->text[0] != '\0'
+                                ? option->text : option->name);
+        }
+    }
+    stp_parameter_description_destroy(&description);
+}
+
+bool featherSupported(stp_vars_t* vars)
+{
+    if (!vars) return false;
+    stp_parameter_t description;
+    std::memset(&description, 0, sizeof(description));
+    stp_describe_parameter(vars, "EscIFeatherEdge", &description);
+    const bool supported = description.name &&
+        std::strcmp(description.name, "EscIFeatherEdge") == 0 &&
+        description.p_type == STP_PARAMETER_TYPE_DOUBLE;
+    stp_parameter_description_destroy(&description);
+    return supported;
+}
+
 void addResolutionProfile(stp_vars_t* vars,
                           const stp_param_string_t* option,
                           gutenrip::worker::PrintDriverProfile* profile)
@@ -283,6 +318,9 @@ void addResolutionProfile(stp_vars_t* vars,
                                   ? resolution->printed_vres
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
+    addStringOptions(vars, "DitherAlgorithm", output->mutable_dither_options());
+    addStringOptions(vars, "Weave", output->mutable_weave_options());
+    output->set_feather_supported(featherSupported(vars));
 }
 
 void fillResolutions(stp_vars_t* vars, gutenrip::worker::PrintDriverProfile* profile)

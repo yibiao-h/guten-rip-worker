@@ -10,6 +10,11 @@ message Capabilities {
   bool print_engine_ready = 3;
 }
 
+message PrintOption {
+  string value = 1;
+  string label = 2;
+}
+
 message DriverResolution {
   string name = 1;
   string label = 2;
@@ -18,6 +23,9 @@ message DriverResolution {
   int32 printed_dpi_x = 5;
   int32 printed_dpi_y = 6;
   int32 base_dpi_x = 7;
+  repeated PrintOption dither_options = 8;
+  repeated PrintOption weave_options = 9;
+  bool feather_supported = 10;
 }
 
 message PhysicalChannelProfile {
