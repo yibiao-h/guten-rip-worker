@@ -284,6 +284,15 @@ void addStringOptions(stp_vars_t* vars,
     stp_parameter_description_destroy(&description);
 }
 
+void addDefaultOption(
+    google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output)
+{
+    if (!output || !output->empty()) return;
+    auto* item = output->Add();
+    item->set_value("Default");
+    item->set_label("Default");
+}
+
 bool featherSupported(stp_vars_t* vars)
 {
     if (!vars) return false;
@@ -325,6 +334,7 @@ void addResolutionProfile(stp_vars_t* vars,
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
     addStringOptions(vars, "InputSlot", output->mutable_input_slot_options());
+    addDefaultOption(output->mutable_input_slot_options());
     addStringOptions(vars, "DitherAlgorithm", output->mutable_dither_options());
     addStringOptions(vars, "Weave", output->mutable_weave_options());
     addStringOptions(vars, "PrintingDirection",
@@ -569,7 +579,9 @@ void applySettings(stp_vars_t* vars,
                    int rawChannels)
 {
     setStringParameter(vars, "PageSize", settings.page_size());
-    setStringParameter(vars, "InputSlot", settings.input_slot());
+    if (settings.input_slot() != "Default") {
+        setStringParameter(vars, "InputSlot", settings.input_slot());
+    }
     setStringParameter(vars, "Duplex", settings.duplex());
     setStringParameter(vars, "CDInnerRadius", settings.cd_inner_radius());
     setStringParameter(vars, "MediaType", settings.media_type());
