@@ -909,6 +909,20 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     stp_set_width(vars, geometry.print_width());
     stp_set_height(vars, geometry.print_height());
 
+    if (start.settings().has_active_nozzles()) {
+        const stpi_escp2_printer_t* escp2 = stpi_escp2_get_printer(vars);
+        if (escp2 && start.settings().active_nozzles() > escp2->nozzles) {
+            stp_vars_destroy(vars);
+            sendDone(false,
+                     "active nozzles " +
+                         std::to_string(start.settings().active_nozzles()) +
+                         " exceeds driver limit " +
+                         std::to_string(escp2->nozzles),
+                     0);
+            return grpc::Status::OK;
+        }
+    }
+
     if (stp_verify(vars) != 1) {
         stp_vars_destroy(vars);
         sendDone(false, "Print engine rejected the supplied render settings.", 0);
