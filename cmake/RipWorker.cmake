@@ -243,6 +243,20 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             add_test(NAME ink_limit_disabled COMMAND test_ink_limit_disabled)
         endif()
 
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_data_file_lookup.cpp")
+            add_executable(test_data_file_lookup
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_data_file_lookup.cpp"
+            )
+            target_include_directories(test_data_file_lookup PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+            )
+            target_link_libraries(test_data_file_lookup PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME data_file_lookup COMMAND test_data_file_lookup)
+        endif()
+
         if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_path_data.cpp")
             add_executable(test_path_data
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_path_data.cpp"
