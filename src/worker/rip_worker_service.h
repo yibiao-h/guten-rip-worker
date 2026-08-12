@@ -6,7 +6,13 @@
 
 #include <gutenprint/gutenprint.h>
 
+#include <cstdint>
 #include <string>
+
+// 流式协议资源上限（客户端须使用一致的值）。
+inline constexpr std::int64_t kMaxWorkerPixels = 1LL << 30;      // 总像素
+inline constexpr std::int64_t kMaxRowBytes = 64LL << 20;         // 单行字节
+inline constexpr std::int32_t kMaxGprcMessageBytes = 64 << 20;   // gRPC 消息上限
 
 // 仅允许 loopback 监听/连接（host 为 127.0.0.1 / localhost / ::1）。
 bool isLoopbackEndpoint(const std::string& endpoint);

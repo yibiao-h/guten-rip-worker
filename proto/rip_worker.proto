@@ -126,7 +126,7 @@ message RawRow {
 
 message RawRowRequest {
   int32 row = 1;
-  uint64 byte_limit = 2;
+  uint64 byte_limit = 2;  // max 64 MiB per row; enforced server-side
 }
 
 message RawPrnChunk {

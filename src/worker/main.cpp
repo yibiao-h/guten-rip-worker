@@ -2,6 +2,8 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <grpc/impl/grpc_types.h>
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -90,6 +92,8 @@ int main(int argc, char** argv)
 
     RipWorkerService service(address);
     grpc::ServerBuilder builder;
+    builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, kMaxGprcMessageBytes);
+    builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, kMaxGprcMessageBytes);
     builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
 

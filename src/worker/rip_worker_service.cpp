@@ -161,6 +161,7 @@ struct StreamImageContext {
     int width = 0;
     int height = 0;
     int channels = 0;
+    std::int64_t totalRowBytes = 0;
     std::string error;
 };
 
@@ -574,6 +575,14 @@ bool validateStart(const gutenrip::worker::RenderPlaneStreamStart& start,
         if (error) *error = "Streaming RAW image shape is invalid.";
         return false;
     }
+    const std::int64_t totalPixels =
+        static_cast<std::int64_t>(start.image().width()) *
+        static_cast<std::int64_t>(start.image().height()) *
+        static_cast<std::int64_t>(start.image().channels());
+    if (totalPixels > kMaxWorkerPixels) {
+        if (error) *error = "Streaming RAW image exceeds the total pixel limit.";
+        return false;
+    }
     if (!start.has_settings()) {
         if (error) *error = "Streaming render is missing print engine settings.";
         return false;
@@ -667,11 +676,19 @@ bool readRawRow(StreamImageContext* context,
                 std::size_t byteLimit,
                 int row)
 {
-    std::memset(data, 0, byteLimit);
     if (!context || !context->stream || row < 0 || row >= context->height) {
         if (context) context->error = "Print engine requested a RAW row outside the image.";
         return false;
     }
+    if (byteLimit > static_cast<std::size_t>(kMaxRowBytes) ||
+        (context->channels > 0 &&
+         byteLimit % static_cast<std::size_t>(context->channels) != 0) ||
+        context->totalRowBytes + static_cast<std::int64_t>(byteLimit) > kMaxWorkerPixels) {
+        context->error = "Print engine requested a RAW row beyond the streaming limits.";
+        return false;
+    }
+    context->totalRowBytes += static_cast<std::int64_t>(byteLimit);
+    std::memset(data, 0, byteLimit);
 
     gutenrip::worker::RenderPlaneStreamResponse request;
     auto* rowRequest = request.mutable_raw_row_request();
