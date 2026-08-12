@@ -80,6 +80,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             "${GUTENRIP_WORKER_ROOT}/src"
             "${PRINT_ENGINE_INCLUDE_DIR}"
             "${PRINT_ENGINE_LIB_DIR}"
+            "${YINK_WORKER_KEYS_INCLUDE_DIR}"
         )
 
         target_link_libraries(guten-rip-worker PRIVATE
@@ -108,6 +109,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             "${GUTENRIP_WORKER_ROOT}/src"
             "${PRINT_ENGINE_INCLUDE_DIR}"
             "${PRINT_ENGINE_LIB_DIR}"
+            "${YINK_WORKER_KEYS_INCLUDE_DIR}"
         )
 
         target_link_libraries(test_rip_worker_client PRIVATE
