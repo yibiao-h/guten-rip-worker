@@ -195,6 +195,21 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             )
             add_test(NAME channel_limits COMMAND test_channel_limits)
         endif()
+
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_buffer_image.cpp")
+            add_executable(test_buffer_image
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_buffer_image.cpp"
+            )
+            target_include_directories(test_buffer_image PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+                "${GUTENRIP_WORKER_ROOT}/gutenprint/src/main"
+            )
+            target_link_libraries(test_buffer_image PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME buffer_image COMMAND test_buffer_image)
+        endif()
     elseif(BUILD_CORE_TESTS)
         message(STATUS "Skipping test_rip_worker_client: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
