@@ -93,6 +93,10 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             OpenSSL::Crypto
             Threads::Threads
         )
+
+        if (WIN32)
+            target_link_libraries(guten-rip-worker PRIVATE shell32)
+        endif()
     elseif(BUILD_RIP_WORKER)
         message(STATUS "Skipping guten-rip-worker: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
@@ -129,7 +133,14 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         )
 
         if (WIN32)
-            target_link_libraries(test_rip_worker_client PRIVATE gdi32)
+            target_link_libraries(test_rip_worker_client PRIVATE gdi32 shell32)
+        endif()
+
+        # worker 运行时日志审计行仅在非 NDEBUG 构建写出。
+        if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(test_rip_worker_client PRIVATE -UNDEBUG)
+        elseif(MSVC)
+            target_compile_options(test_rip_worker_client PRIVATE /UNDEBUG)
         endif()
 
         add_test(NAME rip_worker_client COMMAND test_rip_worker_client)
