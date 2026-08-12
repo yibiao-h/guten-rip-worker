@@ -160,6 +160,24 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             )
             add_test(NAME xml_raw_escape COMMAND test_xml_raw_escape)
         endif()
+
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_escp2_channels_bounds.cpp")
+            add_executable(test_escp2_channels_bounds
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_escp2_channels_bounds.cpp"
+            )
+            target_compile_definitions(test_escp2_channels_bounds PRIVATE
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+            )
+            target_include_directories(test_escp2_channels_bounds PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+                "${GUTENRIP_WORKER_ROOT}/gutenprint/src/main"
+            )
+            target_link_libraries(test_escp2_channels_bounds PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME escp2_channels COMMAND test_escp2_channels_bounds)
+        endif()
     elseif(BUILD_CORE_TESTS)
         message(STATUS "Skipping test_rip_worker_client: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
