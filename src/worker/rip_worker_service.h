@@ -7,6 +7,7 @@
 #include <gutenprint/gutenprint.h>
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 
 // 流式协议资源上限（客户端须使用一致的值）。
@@ -43,5 +44,8 @@ public:
                              gutenrip::worker::WorkerHelloResponse* response) override;
 
 private:
+    // 同步服务每次只处理一个 RPC，但 gRPC 线程池并发；
+    // 整体串行化覆盖 print engine 全局 model 缓存/refcache 竞态。
+    std::mutex m_rpcMutex;
     std::string m_listenEndpoint;
 };

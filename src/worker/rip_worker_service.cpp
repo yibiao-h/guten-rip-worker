@@ -828,6 +828,7 @@ grpc::Status RipWorkerService::GetCapabilities(grpc::ServerContext* context,
                                                const gutenrip::worker::Empty* request,
                                                gutenrip::worker::Capabilities* response)
 {
+    std::lock_guard<std::mutex> lock(m_rpcMutex);
     (void)context;
     (void)request;
     response->set_worker_name("guten-rip-worker");
@@ -841,6 +842,7 @@ grpc::Status RipWorkerService::GetPrintDriverCatalog(
     const gutenrip::worker::PrintDriverCatalogRequest* request,
     gutenrip::worker::PrintDriverCatalog* response)
 {
+    std::lock_guard<std::mutex> lock(m_rpcMutex);
     (void)context;
     response->set_protocol_version(kProtocolVersion);
     if (!request || request->driver_ids_size() == 0) {
@@ -863,6 +865,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     grpc::ServerContext* context,
     WorkerStream* stream)
 {
+    std::lock_guard<std::mutex> lock(m_rpcMutex);
     auto sendDone = [&](bool ok, const std::string& message, std::uint64_t rawBytesWritten) {
         gutenrip::worker::RenderPlaneStreamResponse response;
         auto* done = response.mutable_done();
