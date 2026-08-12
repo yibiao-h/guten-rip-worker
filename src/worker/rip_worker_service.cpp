@@ -21,6 +21,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <shlobj.h>
+#include <knownfolders.h>
+#include <objbase.h>
 #endif
 
 extern "C" {
@@ -166,14 +169,48 @@ struct StreamImageContext {
     std::string error;
 };
 
+std::filesystem::path workerLogDirectory()
+{
+    if (const char* envValue = std::getenv("YINK_WORKER_LOG_DIR")) {
+        if (envValue[0] != '\0') {
+            return std::filesystem::path(envValue);
+        }
+    }
+#ifdef _WIN32
+    PWSTR knownPath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &knownPath))) {
+        const std::filesystem::path path(knownPath);
+        CoTaskMemFree(knownPath);
+        return path / "YinkStudio" / "logs";
+    }
+    if (knownPath) {
+        CoTaskMemFree(knownPath);
+    }
+#else
+    if (const char* home = std::getenv("HOME")) {
+        return std::filesystem::path(home) / "Library" / "Logs" / "YinkStudio";
+    }
+#endif
+    return {};
+}
+
 void appendWorkerRuntimeLog(const std::string& line)
 {
-    std::error_code ec;
-    const auto path = std::filesystem::current_path(ec) / "yink-worker-runtime.log";
-    if (ec) {
-        return;
+    const std::filesystem::path logDir = workerLogDirectory();
+    if (logDir.empty()) {
+        return;  // 无可用日志目录时跳过，不写 cwd。
     }
-    std::ofstream out(path, std::ios::app);
+    std::error_code ec;
+    std::filesystem::create_directories(logDir, ec);
+    const std::filesystem::path logPath = logDir / "yink-worker-runtime.log";
+    constexpr std::uintmax_t kMaxRuntimeLogBytes = 1ULL << 20;  // 1 MiB
+    const std::uintmax_t size = std::filesystem::file_size(logPath, ec);
+    if (!ec && size > kMaxRuntimeLogBytes) {
+        std::filesystem::remove(logDir / "yink-worker-runtime.log.1", ec);
+        ec.clear();
+        std::filesystem::rename(logPath, logDir / "yink-worker-runtime.log.1", ec);
+    }
+    std::ofstream out(logPath, std::ios::app);
     if (out) {
         out << line << '\n';
     }
@@ -738,7 +775,7 @@ RipWorkerService::RipWorkerService(std::string listenEndpoint)
     stp_init();
 
     if (stp_printer_model_count() == 0) {
-        std::cerr << "[guten-rip-worker] WARNING: print engine initialized without driver models."
+        std::cerr << "[yink worker] WARNING: print engine initialized without driver models."
                   << " STP_DATA_PATH="
                   << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "(not set)")
                   << std::endl;
@@ -918,7 +955,7 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     image.rep = &imageContext;
 
     std::ostringstream beginLog;
-    beginLog << "[guten-rip-worker] RenderPlaneStream begin"
+    beginLog << "[yink worker] RenderPlaneStream begin"
              << " job_id=" << start.job_id()
              << " driver=" << start.printer_driver()
              << " imagePx=" << imageContext.width << 'x' << imageContext.height
@@ -927,20 +964,24 @@ grpc::Status RipWorkerService::RenderPlaneStream(
              << " runtimeGeometry=" << (start.settings().has_active_nozzles() ? "true" : "false")
              << " STP_DATA_PATH="
              << (std::getenv("STP_DATA_PATH") ? std::getenv("STP_DATA_PATH") : "");
-    std::cerr << beginLog.str() << std::endl;
+#ifndef NDEBUG
     appendWorkerRuntimeLog(beginLog.str());
+#endif
+    std::cerr << beginLog.str() << std::endl;
 
     const int printResult = stp_print(vars, &image);
     stp_vars_destroy(vars);
 
     std::ostringstream doneLog;
-    doneLog << "[guten-rip-worker] RenderPlaneStream finished"
+    doneLog << "[yink worker] RenderPlaneStream finished"
             << " job_id=" << start.job_id()
             << " result=" << printResult
             << " rawBytes=" << outputContext.rawBytesWritten
             << " streamError=" << imageContext.error;
-    std::cerr << doneLog.str() << std::endl;
+#ifndef NDEBUG
     appendWorkerRuntimeLog(doneLog.str());
+#endif
+    std::cerr << doneLog.str() << std::endl;
 
     if (context->IsCancelled()) {
         return grpc::Status::CANCELLED;

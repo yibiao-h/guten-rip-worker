@@ -62,11 +62,11 @@ int main(int argc, char** argv)
 
     std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
     if (!server) {
-        std::cerr << "Unable to start guten-rip-worker on " << address << '\n';
+        std::cerr << "Unable to start print worker on " << address << '\n';
         return 1;
     }
 
-    std::cout << "guten-rip-worker listening on " << address << '\n';
+    std::cout << "print worker listening on " << address << '\n';
     server->Wait();
     return 0;
 }
