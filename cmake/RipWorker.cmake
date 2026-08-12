@@ -146,6 +146,20 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             )
             add_test(NAME esc_i_feather COMMAND test_esc_i_feather)
         endif()
+
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_xml_raw_escape.cpp")
+            add_executable(test_xml_raw_escape
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_xml_raw_escape.cpp"
+            )
+            target_include_directories(test_xml_raw_escape PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+            )
+            target_link_libraries(test_xml_raw_escape PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME xml_raw_escape COMMAND test_xml_raw_escape)
+        endif()
     elseif(BUILD_CORE_TESTS)
         message(STATUS "Skipping test_rip_worker_client: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
