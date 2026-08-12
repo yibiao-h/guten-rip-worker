@@ -2,6 +2,7 @@
 
 #include "ed25519_sign.h"
 #include "worker_identity_key.h"
+#include "xml_data_path.h"
 
 #include <algorithm>
 #include <cmath>
@@ -178,27 +179,13 @@ void appendWorkerRuntimeLog(const std::string& line)
     }
 }
 
-bool envIsSet(const char* name)
-{
-    const char* value = std::getenv(name);
-    return value && value[0] != '\0';
-}
-
 void setEnv(const char* name, const std::filesystem::path& value)
 {
 #ifdef _WIN32
-    _putenv_s(name, value.string().c_str());
+    _wputenv_s(L"STP_DATA_PATH", value.wstring().c_str());
 #else
-    setenv(name, value.string().c_str(), 0);
+    setenv(name, value.string().c_str(), 1);
 #endif
-}
-
-bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
-{
-    const std::filesystem::path escp2 = dataPath / "printers" / "escp2.xml";
-    std::error_code ec;
-    return std::filesystem::is_regular_file(escp2, ec) && !ec &&
-           std::filesystem::file_size(escp2, ec) > 0 && !ec;
 }
 
 std::filesystem::path executableDir()
@@ -215,34 +202,16 @@ std::filesystem::path executableDir()
 
 void configurePrintEngineDataPath()
 {
-    if (envIsSet("STP_DATA_PATH") &&
-        xmlDataPathContainsLocalDrivers(std::getenv("STP_DATA_PATH"))) {
+    std::string warning;
+    const auto dataPath = findRepositoryXmlDataPath(
+        executableDir(), std::filesystem::current_path(), &warning);
+    if (dataPath) {
+        setEnv("STP_DATA_PATH", *dataPath);
+        std::cout << "STP_DATA_PATH=" << dataPath->string() << '\n';
         return;
     }
-
-    const std::filesystem::path current = std::filesystem::current_path();
-    const std::filesystem::path executable = executableDir();
-    const std::filesystem::path candidates[] = {
-        current.parent_path() / "xml",
-        executable.parent_path() / "xml",
-        current / "xml",
-        executable / "xml",
-        current / "gutenprint" / "src" / "xml",
-        current.parent_path() / "gutenprint" / "src" / "xml",
-        current / "worker" / "gutenprint" / "src" / "xml",
-        current.parent_path() / "worker" / "gutenprint" / "src" / "xml",
-        executable / "gutenprint" / "src" / "xml",
-        executable.parent_path() / "gutenprint" / "src" / "xml",
-        executable / "worker" / "gutenprint" / "src" / "xml",
-        executable.parent_path() / "worker" / "gutenprint" / "src" / "xml",
-    };
-
-    for (const auto& candidate : candidates) {
-        if (xmlDataPathContainsLocalDrivers(candidate)) {
-            setEnv("STP_DATA_PATH", candidate);
-            std::cout << "STP_DATA_PATH=" << candidate.string() << '\n';
-            return;
-        }
+    if (!warning.empty()) {
+        std::cerr << warning << '\n';
     }
 }
 
