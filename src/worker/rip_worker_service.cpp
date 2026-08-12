@@ -842,7 +842,7 @@ grpc::Status RipWorkerService::GetCapabilities(grpc::ServerContext* context,
     std::lock_guard<std::mutex> lock(m_rpcMutex);
     (void)context;
     (void)request;
-    response->set_worker_name("guten-rip-worker");
+    response->set_worker_name("yink-worker");
     response->set_protocol_version(kProtocolVersion);
     response->set_print_engine_ready(stp_printer_model_count() > 0);
     return grpc::Status::OK;
