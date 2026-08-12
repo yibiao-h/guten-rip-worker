@@ -1,5 +1,8 @@
 #include "rip_worker_service.h"
 
+#include "ed25519_sign.h"
+#include "worker_identity_key.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -134,9 +137,18 @@ namespace {
 constexpr std::uint32_t kProtocolVersion = 6;
 constexpr int kMaximumRuntimeOffset = 359;
 constexpr int kMaximumRawChannels = 32;
+constexpr std::size_t kWorkerHelloMaxNonceBytes = 64;
 
 using WorkerStream = grpc::ServerReaderWriter<gutenrip::worker::RenderPlaneStreamResponse,
                                                gutenrip::worker::RenderPlaneStreamRequest>;
+
+void appendLe32(std::string* out, std::uint32_t value)
+{
+    out->push_back(static_cast<char>(value & 0xffU));
+    out->push_back(static_cast<char>((value >> 8) & 0xffU));
+    out->push_back(static_cast<char>((value >> 16) & 0xffU));
+    out->push_back(static_cast<char>((value >> 24) & 0xffU));
+}
 
 struct OutputContext {
     WorkerStream* stream = nullptr;
@@ -720,7 +732,21 @@ const char* appNameFunc(stp_image_t*)
 
 } // namespace
 
-RipWorkerService::RipWorkerService()
+bool isLoopbackEndpoint(const std::string& endpoint)
+{
+    const std::size_t colon = endpoint.rfind(':');
+    const std::string host = colon == std::string::npos
+        ? endpoint
+        : endpoint.substr(0, colon);
+    std::string normalized = host;
+    if (normalized.size() >= 2 && normalized.front() == '[' && normalized.back() == ']') {
+        normalized = normalized.substr(1, normalized.size() - 2);
+    }
+    return normalized == "127.0.0.1" || normalized == "localhost" || normalized == "::1";
+}
+
+RipWorkerService::RipWorkerService(std::string listenEndpoint)
+    : m_listenEndpoint(std::move(listenEndpoint))
 {
     configurePrintEngineDataPath();
     stp_init();
@@ -734,6 +760,52 @@ RipWorkerService::RipWorkerService()
 }
 
 RipWorkerService::~RipWorkerService() = default;
+
+void RipWorkerService::setListenEndpoint(const std::string& endpoint)
+{
+    m_listenEndpoint = endpoint;
+}
+
+grpc::Status RipWorkerService::WorkerHello(
+    grpc::ServerContext* context,
+    const gutenrip::worker::WorkerHelloRequest* request,
+    gutenrip::worker::WorkerHelloResponse* response)
+{
+    (void)context;
+    if (!request || !response) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "Worker hello request is missing.");
+    }
+    if (request->protocol_version() != kProtocolVersion) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "Worker hello protocol version mismatch.");
+    }
+    if (request->client_nonce().empty() ||
+        request->client_nonce().size() > kWorkerHelloMaxNonceBytes) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "Worker hello client nonce is invalid.");
+    }
+
+    std::string message;
+    message.reserve(request->client_nonce().size() + 4 + m_listenEndpoint.size());
+    message.append(request->client_nonce());
+    appendLe32(&message, kProtocolVersion);
+    message.append(m_listenEndpoint);
+
+    const std::vector<unsigned char> signature = workerSignEd25519(
+        kWorkerRawPrivateKey, sizeof(kWorkerRawPrivateKey),
+        reinterpret_cast<const unsigned char*>(message.data()), message.size());
+    if (signature.size() != 64) {
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                            "Worker hello signing failed.");
+    }
+
+    response->set_worker_public_key(kWorkerRawPublicKey, sizeof(kWorkerRawPublicKey));
+    response->set_signature(signature.data(), static_cast<int>(signature.size()));
+    response->set_worker_name("yink-worker");
+    response->set_protocol_version(kProtocolVersion);
+    return grpc::Status::OK;
+}
 
 grpc::Status RipWorkerService::GetCapabilities(grpc::ServerContext* context,
                                                const gutenrip::worker::Empty* request,

@@ -82,9 +82,13 @@ void configureGutenprintDataPath(const char* executablePath)
 int main(int argc, char** argv)
 {
     const std::string address = argc > 1 ? argv[1] : "127.0.0.1:50051";
+    if (!isLoopbackEndpoint(address)) {
+        std::cerr << "Refusing to listen on non-loopback address: " << address << '\n';
+        return 1;
+    }
     configureGutenprintDataPath(argv[0]);
 
-    RipWorkerService service;
+    RipWorkerService service(address);
     grpc::ServerBuilder builder;
     builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);

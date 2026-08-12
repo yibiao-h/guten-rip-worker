@@ -74,6 +74,8 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             "${GUTENRIP_WORKER_ROOT}/src/worker/main.cpp"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.cpp"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.h"
+            "${GUTENRIP_WORKER_ROOT}/src/worker/ed25519_sign.cpp"
+            "${GUTENRIP_WORKER_ROOT}/src/worker/ed25519_sign.h"
         )
 
         target_include_directories(guten-rip-worker PRIVATE
@@ -86,6 +88,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
         target_link_libraries(guten-rip-worker PRIVATE
             guten_rip_worker_proto
             "${PRINT_ENGINE_LIBRARY}"
+            OpenSSL::Crypto
             Threads::Threads
         )
     elseif(BUILD_RIP_WORKER)
@@ -98,6 +101,8 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_rip_worker_client.cpp"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.cpp"
             "${GUTENRIP_WORKER_ROOT}/src/worker/rip_worker_service.h"
+            "${GUTENRIP_WORKER_ROOT}/src/worker/ed25519_sign.cpp"
+            "${GUTENRIP_WORKER_ROOT}/src/worker/ed25519_sign.h"
         )
 
         target_compile_definitions(test_rip_worker_client PRIVATE
