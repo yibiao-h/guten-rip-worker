@@ -274,6 +274,21 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             add_test(NAME color_threshold COMMAND test_color_threshold)
         endif()
 
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_cd_mask.cpp")
+            add_executable(test_cd_mask
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_cd_mask.cpp"
+            )
+            target_include_directories(test_cd_mask PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+                "${GUTENRIP_WORKER_ROOT}/gutenprint/src/main"
+            )
+            target_link_libraries(test_cd_mask PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME cd_mask COMMAND test_cd_mask)
+        endif()
+
         if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_path_data.cpp")
             add_executable(test_path_data
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_path_data.cpp"
