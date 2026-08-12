@@ -178,6 +178,23 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             )
             add_test(NAME escp2_channels COMMAND test_escp2_channels_bounds)
         endif()
+
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_channel_limits.cpp")
+            add_executable(test_channel_limits
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_channel_limits.cpp"
+            )
+            target_compile_definitions(test_channel_limits PRIVATE
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+            )
+            target_include_directories(test_channel_limits PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+            )
+            target_link_libraries(test_channel_limits PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME channel_limits COMMAND test_channel_limits)
+        endif()
     elseif(BUILD_CORE_TESTS)
         message(STATUS "Skipping test_rip_worker_client: print engine library was not found in ${PRINT_ENGINE_LIB_DIR}.")
     endif()
