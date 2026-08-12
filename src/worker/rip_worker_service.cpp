@@ -140,7 +140,12 @@ namespace {
 
 constexpr std::uint32_t kProtocolVersion = 6;
 constexpr int kMaximumRuntimeOffset = 359;
-constexpr int kMaximumRawChannels = 32;
+// Shared with the print engine (gutenprint/image.h). The engine rejects raw
+// channels above STP_MAX_RAW_CHANNELS, so the worker gate must never exceed
+// it; the static_assert keeps the two sides visibly in sync.
+constexpr int kMaximumRawChannels = STP_MAX_RAW_CHANNELS;
+static_assert(kMaximumRawChannels == STP_MAX_RAW_CHANNELS,
+              "worker raw channel limit must match the print engine");
 constexpr std::size_t kWorkerHelloMaxNonceBytes = 64;
 
 using WorkerStream = grpc::ServerReaderWriter<gutenrip::worker::RenderPlaneStreamResponse,
