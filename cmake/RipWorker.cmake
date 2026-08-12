@@ -257,6 +257,23 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             add_test(NAME data_file_lookup COMMAND test_data_file_lookup)
         endif()
 
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_color_threshold.cpp")
+            add_executable(test_color_threshold
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_color_threshold.cpp"
+            )
+            target_compile_definitions(test_color_threshold PRIVATE
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+            )
+            target_include_directories(test_color_threshold PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+            )
+            target_link_libraries(test_color_threshold PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+            )
+            add_test(NAME color_threshold COMMAND test_color_threshold)
+        endif()
+
         if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_path_data.cpp")
             add_executable(test_path_data
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_path_data.cpp"
