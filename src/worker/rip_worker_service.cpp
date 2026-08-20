@@ -323,9 +323,11 @@ bool featherSupported(stp_vars_t* vars)
     stp_parameter_t description;
     std::memset(&description, 0, sizeof(description));
     stp_describe_parameter(vars, "EscIFeatherEdge", &description);
+    // Match gutenprint: EscIFeatherEdge is only active for command 1999/2000.
     const bool supported = description.name &&
         std::strcmp(description.name, "EscIFeatherEdge") == 0 &&
-        description.p_type == STP_PARAMETER_TYPE_DOUBLE;
+        description.p_type == STP_PARAMETER_TYPE_DOUBLE &&
+        description.is_active != 0;
     stp_parameter_description_destroy(&description);
     return supported;
 }
