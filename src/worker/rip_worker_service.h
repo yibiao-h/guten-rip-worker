@@ -12,17 +12,17 @@
 #include <string>
 
 // 流式协议资源上限（客户端须使用一致的值）。
-inline constexpr std::int64_t kMaxWorkerPixels = 1LL << 30;      // 总像素
-inline constexpr std::int64_t kMaxWorkerRawBytes =
-    kMaxWorkerPixels * static_cast<std::int64_t>(sizeof(std::uint16_t));
+inline constexpr std::int64_t kMaxWorkerPixels = 1LL << 30;      // 总通道样本
 inline constexpr std::int64_t kMaxRowBytes = 64LL << 20;         // 单行字节
 inline constexpr std::int32_t kMaxGprcMessageBytes = 64 << 20;   // gRPC 消息上限
 
 namespace gutenrip::worker::detail {
 
-bool rawRowRequestFitsStreamingBudget(std::int64_t totalRowBytes,
-                                      std::size_t byteLimit,
-                                      int channels);
+bool rawRowRequestMatchesImage(int row,
+                               int width,
+                               int height,
+                               int channels,
+                               std::size_t byteLimit);
 
 } // namespace gutenrip::worker::detail
 

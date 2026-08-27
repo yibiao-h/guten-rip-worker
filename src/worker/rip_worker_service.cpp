@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <string>
@@ -136,14 +137,28 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 
 }
 
-bool gutenrip::worker::detail::rawRowRequestFitsStreamingBudget(
-    std::int64_t totalRowBytes,
-    std::size_t byteLimit,
-    int channels)
+bool gutenrip::worker::detail::rawRowRequestMatchesImage(
+    int row,
+    int width,
+    int height,
+    int channels,
+    std::size_t byteLimit)
 {
-    return byteLimit <= static_cast<std::size_t>(kMaxRowBytes) &&
-           (channels <= 0 || byteLimit % static_cast<std::size_t>(channels) == 0) &&
-           totalRowBytes + static_cast<std::int64_t>(byteLimit) <= kMaxWorkerRawBytes;
+    if (row < 0 || row >= height || width <= 0 || height <= 0 || channels <= 0) {
+        return false;
+    }
+    const std::size_t widthValue = static_cast<std::size_t>(width);
+    const std::size_t channelValue = static_cast<std::size_t>(channels);
+    if (widthValue > std::numeric_limits<std::size_t>::max() / channelValue) {
+        return false;
+    }
+    const std::size_t samples = widthValue * channelValue;
+    if (samples > std::numeric_limits<std::size_t>::max() / sizeof(std::uint16_t)) {
+        return false;
+    }
+    const std::size_t expectedBytes = samples * sizeof(std::uint16_t);
+    return expectedBytes <= static_cast<std::size_t>(kMaxRowBytes) &&
+           byteLimit == expectedBytes;
 }
 
 namespace {
@@ -180,7 +195,10 @@ struct StreamImageContext {
     int width = 0;
     int height = 0;
     int channels = 0;
-    std::int64_t totalRowBytes = 0;
+    std::uint64_t rawRowRequestCount = 0;
+    std::uint64_t rawBytesRequested = 0;
+    std::uint64_t repeatedRowRequestCount = 0;
+    int lastRequestedRow = -1;
     std::string error;
 };
 
@@ -770,12 +788,17 @@ bool readRawRow(StreamImageContext* context,
         if (context) context->error = "Print engine requested a RAW row outside the image.";
         return false;
     }
-    if (!gutenrip::worker::detail::rawRowRequestFitsStreamingBudget(
-            context->totalRowBytes, byteLimit, context->channels)) {
-        context->error = "Print engine requested a RAW row beyond the streaming limits.";
+    if (!gutenrip::worker::detail::rawRowRequestMatchesImage(
+            row, context->width, context->height, context->channels, byteLimit)) {
+        context->error = "Print engine RAW row byte count did not match the image shape.";
         return false;
     }
-    context->totalRowBytes += static_cast<std::int64_t>(byteLimit);
+    if (context->lastRequestedRow == row) {
+        ++context->repeatedRowRequestCount;
+    }
+    context->lastRequestedRow = row;
+    ++context->rawRowRequestCount;
+    context->rawBytesRequested += static_cast<std::uint64_t>(byteLimit);
     std::memset(data, 0, byteLimit);
 
     gutenrip::worker::RenderPlaneStreamResponse request;
@@ -1064,6 +1087,11 @@ grpc::Status RipWorkerService::RenderPlaneStream(
     doneLog << "[yink worker] RenderPlaneStream finished"
             << " job_id=" << start.job_id()
             << " result=" << printResult
+            << " imagePx=" << imageContext.width << 'x' << imageContext.height
+            << " rawChannels=" << imageContext.channels
+            << " rawRowRequests=" << imageContext.rawRowRequestCount
+            << " rawBytesRequested=" << imageContext.rawBytesRequested
+            << " repeatedRawRowRequests=" << imageContext.repeatedRowRequestCount
             << " rawBytes=" << outputContext.rawBytesWritten
             << " streamError=" << imageContext.error;
 #ifndef NDEBUG
