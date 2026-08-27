@@ -280,6 +280,24 @@ int intParameterForResolution(stp_vars_t* vars,
     return 0;
 }
 
+bool validStringOptionForMode(stp_vars_t* vars,
+                              const char* parameter,
+                              const std::string& value)
+{
+    if (!vars || !parameter || value.empty()) return false;
+    stp_vars_t* candidate = stp_vars_create_copy(vars);
+    if (!candidate) return false;
+    stp_set_string_parameter(candidate, parameter, value.c_str());
+    stp_parameter_t description;
+    std::memset(&description, 0, sizeof(description));
+    stp_describe_parameter(candidate, parameter, &description);
+    const bool valid = description.is_active != 0 &&
+        stp_verify_parameter(candidate, parameter, 1) == PARAMETER_OK;
+    stp_parameter_description_destroy(&description);
+    stp_vars_destroy(candidate);
+    return valid;
+}
+
 void addStringOptions(stp_vars_t* vars,
                       const char* parameter,
                       google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output,
@@ -294,6 +312,7 @@ void addStringOptions(stp_vars_t* vars,
         for (size_t i = 0; i < count; ++i) {
             const auto* option = stp_string_list_param(description.bounds.str, i);
             if (!option || !option->name || option->name[0] == '\0') continue;
+            if (!validStringOptionForMode(vars, parameter, option->name)) continue;
             if (explicitDirectionsOnly &&
                 std::strcmp(option->name, "Bidirectional") != 0 &&
                 std::strcmp(option->name, "Unidirectional") != 0) {
@@ -308,18 +327,16 @@ void addStringOptions(stp_vars_t* vars,
     stp_parameter_description_destroy(&description);
 }
 
-void addDefaultOption(
-    google::protobuf::RepeatedPtrField<gutenrip::worker::PrintOption>* output)
+bool featherSupported(stp_vars_t* source)
 {
-    if (!output || !output->empty()) return;
-    auto* item = output->Add();
-    item->set_value("Default");
-    item->set_label("Default");
-}
-
-bool featherSupported(stp_vars_t* vars)
-{
+    if (!source) return false;
+    stp_vars_t* vars = stp_vars_create_copy(source);
     if (!vars) return false;
+    stp_set_float_parameter(vars, "EscIFeatherEdge", 0.052632);
+    if (!stp_check_float_parameter(vars, "EscIFeatherEdge", STP_PARAMETER_ACTIVE)) {
+        stp_vars_destroy(vars);
+        return false;
+    }
     stp_parameter_t description;
     std::memset(&description, 0, sizeof(description));
     stp_describe_parameter(vars, "EscIFeatherEdge", &description);
@@ -329,7 +346,58 @@ bool featherSupported(stp_vars_t* vars)
         description.p_type == STP_PARAMETER_TYPE_DOUBLE &&
         description.is_active != 0;
     stp_parameter_description_destroy(&description);
+    stp_vars_destroy(vars);
     return supported;
+}
+
+bool hasStringOption(stp_vars_t* vars,
+                     const char* parameter,
+                     const std::string& value)
+{
+    return validStringOptionForMode(vars, parameter, value);
+}
+
+bool stringParameterInactiveForMode(stp_vars_t* vars, const char* parameter)
+{
+    if (!vars || !parameter) return false;
+    stp_parameter_t description;
+    std::memset(&description, 0, sizeof(description));
+    stp_describe_parameter(vars, parameter, &description);
+    const bool inactive = description.is_active == 0;
+    stp_parameter_description_destroy(&description);
+    return inactive;
+}
+
+bool validateModeEngineOptions(
+    stp_vars_t* vars,
+    const gutenrip::worker::PrintEngineSettings& settings,
+    std::string* error)
+{
+    const auto requireOption = [&](const char* parameter,
+                                   const std::string& value,
+                                   const char* label) {
+        if (hasStringOption(vars, parameter, value)) return true;
+        if (error) {
+            *error = std::string("Selected ") + label +
+                " is unavailable for this resolution.";
+        }
+        return false;
+    };
+    const bool inputSlotValid = settings.input_slot().empty()
+        ? stringParameterInactiveForMode(vars, "InputSlot")
+        : requireOption("InputSlot", settings.input_slot(), "input slot");
+    if (!inputSlotValid ||
+        !requireOption("DitherAlgorithm", settings.dither_algorithm(), "dither") ||
+        !requireOption("Weave", settings.weave(), "weave") ||
+        !requireOption("PrintingDirection", settings.printing_direction(),
+                       "printing direction")) {
+        return false;
+    }
+    if (!featherSupported(vars) && settings.esc_i_feather_edge() < 0.999) {
+        if (error) *error = "Feather is unavailable for this resolution.";
+        return false;
+    }
+    return true;
 }
 
 void addResolutionProfile(stp_vars_t* vars,
@@ -360,7 +428,6 @@ void addResolutionProfile(stp_vars_t* vars,
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
     addStringOptions(vars, "InputSlot", output->mutable_input_slot_options());
-    addDefaultOption(output->mutable_input_slot_options());
     addStringOptions(vars, "DitherAlgorithm", output->mutable_dither_options());
     addStringOptions(vars, "Weave", output->mutable_weave_options());
     addStringOptions(vars, "PrintingDirection",
@@ -502,7 +569,7 @@ bool validateSettings(const gutenrip::worker::PrintEngineSettings& settings,
                       std::string* error)
 {
     const std::string* requiredStrings[] = {
-        &settings.page_size(), &settings.input_slot(), &settings.duplex(),
+        &settings.page_size(), &settings.duplex(),
         &settings.cd_inner_radius(), &settings.media_type(), &settings.resolution(),
         &settings.quality(), &settings.printing_mode(), &settings.input_image_type(),
         &settings.ink_set(), &settings.ink_type(), &settings.color_correction(),
@@ -613,7 +680,7 @@ void applySettings(stp_vars_t* vars,
                    int rawChannels)
 {
     setStringParameter(vars, "PageSize", settings.page_size());
-    if (settings.input_slot() != "Default") {
+    if (!settings.input_slot().empty()) {
         setStringParameter(vars, "InputSlot", settings.input_slot());
     }
     setStringParameter(vars, "Duplex", settings.duplex());
@@ -934,6 +1001,12 @@ grpc::Status RipWorkerService::RenderPlaneStream(
                      0);
             return grpc::Status::OK;
         }
+    }
+
+    if (!validateModeEngineOptions(vars, start.settings(), &validationError)) {
+        stp_vars_destroy(vars);
+        sendDone(false, validationError, 0);
+        return grpc::Status::OK;
     }
 
     if (stp_verify(vars) != 1) {
