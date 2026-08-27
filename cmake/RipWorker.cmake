@@ -162,6 +162,24 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
             add_test(NAME esc_i_feather COMMAND test_esc_i_feather)
         endif()
 
+        if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_escp2_source_row_reuse.cpp")
+            add_executable(test_escp2_source_row_reuse
+                "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_escp2_source_row_reuse.cpp"
+            )
+            target_compile_definitions(test_escp2_source_row_reuse PRIVATE
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+            )
+            target_include_directories(test_escp2_source_row_reuse PRIVATE
+                "${PRINT_ENGINE_INCLUDE_DIR}"
+                "${PRINT_ENGINE_LIB_DIR}"
+            )
+            target_link_libraries(test_escp2_source_row_reuse PRIVATE
+                "${PRINT_ENGINE_LIBRARY}"
+                OpenSSL::Crypto
+            )
+            add_test(NAME escp2_source_row_reuse COMMAND test_escp2_source_row_reuse)
+        endif()
+
         if (EXISTS "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_xml_raw_escape.cpp")
             add_executable(test_xml_raw_escape
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_xml_raw_escape.cpp"
