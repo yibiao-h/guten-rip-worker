@@ -136,6 +136,16 @@ extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
 
 }
 
+bool gutenrip::worker::detail::rawRowRequestFitsStreamingBudget(
+    std::int64_t totalRowBytes,
+    std::size_t byteLimit,
+    int channels)
+{
+    return byteLimit <= static_cast<std::size_t>(kMaxRowBytes) &&
+           (channels <= 0 || byteLimit % static_cast<std::size_t>(channels) == 0) &&
+           totalRowBytes + static_cast<std::int64_t>(byteLimit) <= kMaxWorkerRawBytes;
+}
+
 namespace {
 
 constexpr std::uint32_t kProtocolVersion = 6;
@@ -760,10 +770,8 @@ bool readRawRow(StreamImageContext* context,
         if (context) context->error = "Print engine requested a RAW row outside the image.";
         return false;
     }
-    if (byteLimit > static_cast<std::size_t>(kMaxRowBytes) ||
-        (context->channels > 0 &&
-         byteLimit % static_cast<std::size_t>(context->channels) != 0) ||
-        context->totalRowBytes + static_cast<std::int64_t>(byteLimit) > kMaxWorkerPixels) {
+    if (!gutenrip::worker::detail::rawRowRequestFitsStreamingBudget(
+            context->totalRowBytes, byteLimit, context->channels)) {
         context->error = "Print engine requested a RAW row beyond the streaming limits.";
         return false;
     }
