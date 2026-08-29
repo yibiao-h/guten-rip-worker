@@ -414,7 +414,15 @@ bool validateModeEngineOptions(
     const bool inputSlotValid = settings.input_slot().empty()
         ? stringParameterInactiveForMode(vars, "InputSlot")
         : requireOption("InputSlot", settings.input_slot(), "input slot");
-    if (!inputSlotValid ||
+    const inklist_t* inkList = stpi_escp2_inklist(vars);
+    const bool inkSetValid = inkList && inkList->name &&
+        settings.ink_set() == inkList->name;
+    if (!inkSetValid && error) {
+        *error = "Selected ink set is unavailable for this resolution.";
+    }
+    if (!requireOption("MediaType", settings.media_type(), "media type") ||
+        !inkSetValid ||
+        !inputSlotValid ||
         !requireOption("DitherAlgorithm", settings.dither_algorithm(), "dither") ||
         !requireOption("Weave", settings.weave(), "weave") ||
         !requireOption("PrintingDirection", settings.printing_direction(),
@@ -480,10 +488,10 @@ void fillResolutions(stp_vars_t* vars, gutenrip::worker::PrintDriverProfile* pro
 void primeCatalogVars(stp_vars_t* vars)
 {
     stp_set_string_parameter(vars, "PageSize", "Custom");
-    stp_set_string_parameter(vars, "MediaType", "ColorOffset");
+    stp_set_string_parameter(vars, "MediaType", "Plain");
     stp_set_string_parameter(vars, "PrintingMode", "Color");
     stp_set_string_parameter(vars, "InputImageType", "Raw");
-    stp_set_string_parameter(vars, "InkSet", "Physical");
+    stp_set_string_parameter(vars, "InkSet", "None");
     stp_set_string_parameter(vars, "ColorCorrection", "Density");
     stp_set_string_parameter(vars, "DitherAlgorithm", "Adaptive");
 }
