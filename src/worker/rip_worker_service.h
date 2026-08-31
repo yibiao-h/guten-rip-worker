@@ -13,7 +13,9 @@
 
 // 流式协议资源上限（客户端须使用一致的值）。
 inline constexpr std::int64_t kMaxRowBytes = 64LL << 20;         // 单行字节
-inline constexpr std::int32_t kMaxGprcMessageBytes = 64 << 20;   // gRPC 消息上限
+inline constexpr std::int32_t kGrpcEnvelopeAllowance = 1 << 20;  // protobuf/gRPC 封装余量
+inline constexpr std::int32_t kMaxGrpcMessageBytes =
+    static_cast<std::int32_t>(kMaxRowBytes) + kGrpcEnvelopeAllowance;
 
 namespace gutenrip::worker::detail {
 
