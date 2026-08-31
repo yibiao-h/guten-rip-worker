@@ -766,15 +766,23 @@ bool writeRawPrn(OutputContext* context, const char* buffer, std::size_t bytes)
     if (!context || !context->stream || !buffer || bytes == 0) {
         return bytes == 0;
     }
-    gutenrip::worker::RenderPlaneStreamResponse response;
-    auto* chunk = response.mutable_raw_prn_chunk();
-    chunk->set_data(buffer, bytes);
-    chunk->set_raw_prn_bytes_written(context->rawBytesWritten + bytes);
-    if (!context->stream->Write(response)) {
-        context->writeFailed = true;
-        return false;
+    std::size_t offset = 0;
+    while (offset < bytes) {
+        const std::size_t chunkBytes = std::min<std::size_t>(
+            bytes - offset,
+            static_cast<std::size_t>(kMaxRowBytes));
+        gutenrip::worker::RenderPlaneStreamResponse response;
+        auto* chunk = response.mutable_raw_prn_chunk();
+        chunk->set_data(buffer + offset, chunkBytes);
+        chunk->set_raw_prn_bytes_written(
+            context->rawBytesWritten + chunkBytes);
+        if (!context->stream->Write(response)) {
+            context->writeFailed = true;
+            return false;
+        }
+        context->rawBytesWritten += chunkBytes;
+        offset += chunkBytes;
     }
-    context->rawBytesWritten += bytes;
     return true;
 }
 
