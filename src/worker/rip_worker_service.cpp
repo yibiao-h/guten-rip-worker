@@ -691,12 +691,12 @@ bool validateStart(const gutenrip::worker::RenderPlaneStreamStart& start,
         if (error) *error = "Streaming RAW image shape is invalid.";
         return false;
     }
-    const std::int64_t totalPixels =
-        static_cast<std::int64_t>(start.image().width()) *
-        static_cast<std::int64_t>(start.image().height()) *
-        static_cast<std::int64_t>(start.image().channels());
-    if (totalPixels > kMaxWorkerPixels) {
-        if (error) *error = "Streaming RAW image exceeds the total pixel limit.";
+    const std::uint64_t rowValues =
+        static_cast<std::uint64_t>(start.image().width()) *
+        static_cast<std::uint64_t>(start.image().channels());
+    if (rowValues > static_cast<std::uint64_t>(kMaxRowBytes) /
+                        sizeof(std::uint16_t)) {
+        if (error) *error = "Streaming RAW row exceeds the row byte limit.";
         return false;
     }
     if (!start.has_settings()) {

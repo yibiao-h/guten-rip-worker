@@ -12,7 +12,6 @@
 #include <string>
 
 // 流式协议资源上限（客户端须使用一致的值）。
-inline constexpr std::int64_t kMaxWorkerPixels = 1LL << 30;      // 总通道样本
 inline constexpr std::int64_t kMaxRowBytes = 64LL << 20;         // 单行字节
 inline constexpr std::int32_t kMaxGprcMessageBytes = 64 << 20;   // gRPC 消息上限
 
