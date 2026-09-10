@@ -115,7 +115,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
 
         target_compile_definitions(test_rip_worker_client PRIVATE
             YINK_HAS_WORKER_CLIENT=1
-            YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+            YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
         )
         target_include_directories(test_rip_worker_client PRIVATE
             "${GUTENRIP_WORKER_HOST_ROOT}/src"
@@ -150,7 +150,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_esc_i_feather.cpp"
             )
             target_compile_definitions(test_esc_i_feather PRIVATE
-                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
             )
             target_include_directories(test_esc_i_feather PRIVATE
                 "${PRINT_ENGINE_INCLUDE_DIR}"
@@ -167,7 +167,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_escp2_source_row_reuse.cpp"
             )
             target_compile_definitions(test_escp2_source_row_reuse PRIVATE
-                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
             )
             target_include_directories(test_escp2_source_row_reuse PRIVATE
                 "${PRINT_ENGINE_INCLUDE_DIR}"
@@ -199,7 +199,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_escp2_channels_bounds.cpp"
             )
             target_compile_definitions(test_escp2_channels_bounds PRIVATE
-                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
             )
             target_include_directories(test_escp2_channels_bounds PRIVATE
                 "${PRINT_ENGINE_INCLUDE_DIR}"
@@ -217,7 +217,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_channel_limits.cpp"
             )
             target_compile_definitions(test_channel_limits PRIVATE
-                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
             )
             target_include_directories(test_channel_limits PRIVATE
                 "${PRINT_ENGINE_INCLUDE_DIR}"
@@ -249,7 +249,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_ink_limit_disabled.cpp"
             )
             target_compile_definitions(test_ink_limit_disabled PRIVATE
-                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
             )
             target_include_directories(test_ink_limit_disabled PRIVATE
                 "${PRINT_ENGINE_INCLUDE_DIR}"
@@ -280,7 +280,7 @@ if (Protobuf_FOUND AND gRPC_FOUND AND
                 "${GUTENRIP_WORKER_HOST_ROOT}/tests/worker/test_color_threshold.cpp"
             )
             target_compile_definitions(test_color_threshold PRIVATE
-                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/gutenprint/src/xml"
+                YINK_TEST_XML_DIR="${GUTENRIP_WORKER_ROOT}/../config/xml"
             )
             target_include_directories(test_color_threshold PRIVATE
                 "${PRINT_ENGINE_INCLUDE_DIR}"

@@ -15,7 +15,7 @@ bool xmlDataPathContainsLocalDrivers(const std::filesystem::path& dataPath)
 }
 
 // 规范化（解析 junction/相对路径）后路径必须属于仓库
-// worker/gutenprint/src/xml 或安装 xml/ 目录。
+// config/xml 或安装 config/xml/ 目录。
 bool isAllowedXmlDataPath(const std::filesystem::path& dataPath)
 {
     std::error_code ec;
@@ -29,15 +29,9 @@ bool isAllowedXmlDataPath(const std::filesystem::path& dataPath)
         components.push_back(part.string());
     }
     const std::size_t count = components.size();
-    if (count >= 4 &&
-        components[count - 1] == "xml" &&
-        components[count - 2] == "src" &&
-        components[count - 3] == "gutenprint" &&
-        components[count - 4] == "worker") {
-        return true;  // 仓库布局
-    }
-    if (count >= 1 && components[count - 1] == "xml") {
-        return true;  // 安装布局
+    if (count >= 2 && components[count - 1] == "xml" &&
+        components[count - 2] == "config") {
+        return true;
     }
     return false;
 }
@@ -78,27 +72,20 @@ std::optional<std::filesystem::path> findRepositoryXmlDataPath(
     }
 
     std::vector<std::filesystem::path> candidates;
-    candidates.push_back(cwd.parent_path() / "xml");
-    candidates.push_back(executableDir.parent_path() / "xml");
-    candidates.push_back(cwd / "xml");
-    candidates.push_back(executableDir / "xml");
-    candidates.push_back(cwd / "gutenprint" / "src" / "xml");
-    candidates.push_back(cwd.parent_path() / "gutenprint" / "src" / "xml");
-    candidates.push_back(cwd / "worker" / "gutenprint" / "src" / "xml");
-    candidates.push_back(cwd.parent_path() / "worker" / "gutenprint" / "src" / "xml");
-    candidates.push_back(executableDir / "gutenprint" / "src" / "xml");
-    candidates.push_back(executableDir.parent_path() / "gutenprint" / "src" / "xml");
-    candidates.push_back(executableDir / "worker" / "gutenprint" / "src" / "xml");
-    candidates.push_back(executableDir.parent_path() / "worker" / "gutenprint" / "src" / "xml");
+    candidates.push_back(executableDir / "config" / "xml");
+    candidates.push_back(executableDir.parent_path() / "config" / "xml");
+    candidates.push_back(executableDir.parent_path() / "Resources" / "config" / "xml");
+    candidates.push_back(cwd / "config" / "xml");
+    candidates.push_back(cwd.parent_path() / "config" / "xml");
     for (auto dir = executableDir;
          dir.has_parent_path() && dir != dir.parent_path();
          dir = dir.parent_path()) {
-        candidates.push_back(dir / "worker" / "gutenprint" / "src" / "xml");
+        candidates.push_back(dir / "config" / "xml");
     }
     for (auto dir = cwd;
          dir.has_parent_path() && dir != dir.parent_path();
          dir = dir.parent_path()) {
-        candidates.push_back(dir / "worker" / "gutenprint" / "src" / "xml");
+        candidates.push_back(dir / "config" / "xml");
     }
 
     for (const auto& candidate : candidates) {
