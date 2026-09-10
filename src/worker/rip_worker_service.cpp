@@ -131,6 +131,19 @@ typedef struct escp2_printer
     short base_separation;
 } stpi_escp2_printer_t;
 
+typedef struct {
+    const char* name;
+    const char* text;
+    short is_cd;
+    short is_roll_feed;
+    short duplex;
+    short extra_height;
+    unsigned roll_feed_cut_flags;
+    const stp_raw_t* init_sequence;
+    const stp_raw_t* deinit_sequence;
+} input_slot_t;
+extern const input_slot_t* stpi_escp2_get_input_slot(const stp_vars_t* v);
+
 extern const res_t* stpi_escp2_find_resolution(const stp_vars_t* v);
 extern const inklist_t* stpi_escp2_inklist(const stp_vars_t* v);
 extern stpi_escp2_printer_t* stpi_escp2_get_printer(const stp_vars_t* v);
@@ -163,7 +176,7 @@ bool gutenrip::worker::detail::rawRowRequestMatchesImage(
 
 namespace {
 
-constexpr std::uint32_t kProtocolVersion = 6;
+constexpr std::uint32_t kProtocolVersion = 7;
 constexpr int kMaximumRuntimeOffset = 359;
 // Shared with the print engine (gutenprint/image.h). The engine rejects raw
 // channels above STP_MAX_RAW_CHANNELS, so the worker gate must never exceed
@@ -464,6 +477,15 @@ void addResolutionProfile(stp_vars_t* vars,
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
     addStringOptions(vars, "InputSlot", output->mutable_input_slot_options());
+    for (auto& slot : *output->mutable_input_slot_options()) {
+        stp_vars_t* slotVars = stp_vars_create_copy(vars);
+        stp_set_string_parameter(slotVars, "InputSlot", slot.value().c_str());
+        const auto* input = stpi_escp2_get_input_slot(slotVars);
+        if (input && input->init_sequence && input->init_sequence->data) {
+            slot.set_init_sequence(input->init_sequence->data, input->init_sequence->bytes);
+        }
+        stp_vars_destroy(slotVars);
+    }
     addStringOptions(vars, "DitherAlgorithm", output->mutable_dither_options());
     addStringOptions(vars, "Weave", output->mutable_weave_options());
     addStringOptions(vars, "PrintingDirection",

@@ -13,6 +13,7 @@ message Capabilities {
 message PrintOption {
   string value = 1;
   string label = 2;
+  bytes init_sequence = 3;
 }
 
 message DriverResolution {
