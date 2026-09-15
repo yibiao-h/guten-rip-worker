@@ -29,6 +29,10 @@ message DriverResolution {
   bool feather_supported = 10;
   repeated PrintOption input_slot_options = 11;
   repeated PrintOption printing_direction_options = 12;
+  int32 escp2_bits = 13;
+  optional double drop_size_1 = 14;
+  optional double drop_size_2 = 15;
+  optional double drop_size_3 = 16;
 }
 
 message PhysicalChannelProfile {

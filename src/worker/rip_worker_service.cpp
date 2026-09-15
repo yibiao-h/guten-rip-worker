@@ -321,6 +321,23 @@ int intParameterForResolution(stp_vars_t* vars,
     return 0;
 }
 
+bool floatParameterForResolution(stp_vars_t* vars,
+                                 const res_t* resolution,
+                                 const char* parameter,
+                                 double* value)
+{
+    if (resolution && resolution->v &&
+        stp_check_float_parameter(resolution->v, parameter, STP_PARAMETER_ACTIVE)) {
+        if (value) *value = stp_get_float_parameter(resolution->v, parameter);
+        return true;
+    }
+    if (vars && stp_check_float_parameter(vars, parameter, STP_PARAMETER_ACTIVE)) {
+        if (value) *value = stp_get_float_parameter(vars, parameter);
+        return true;
+    }
+    return false;
+}
+
 bool validStringOptionForMode(stp_vars_t* vars,
                               const char* parameter,
                               const std::string& value)
@@ -476,6 +493,17 @@ void addResolutionProfile(stp_vars_t* vars,
                                   ? resolution->printed_vres
                                   : resolution->vres);
     output->set_base_dpi_x(intParameterForResolution(vars, resolution, "escp2_base_res"));
+    output->set_escp2_bits(intParameterForResolution(vars, resolution, "escp2_bits"));
+    double dropSize = 0.0;
+    if (floatParameterForResolution(vars, resolution, "DropSize1", &dropSize)) {
+        output->set_drop_size_1(dropSize);
+    }
+    if (floatParameterForResolution(vars, resolution, "DropSize2", &dropSize)) {
+        output->set_drop_size_2(dropSize);
+    }
+    if (floatParameterForResolution(vars, resolution, "DropSize3", &dropSize)) {
+        output->set_drop_size_3(dropSize);
+    }
     addStringOptions(vars, "InputSlot", output->mutable_input_slot_options());
     for (auto& slot : *output->mutable_input_slot_options()) {
         stp_vars_t* slotVars = stp_vars_create_copy(vars);
