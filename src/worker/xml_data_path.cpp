@@ -36,10 +36,34 @@ bool isAllowedXmlDataPath(const std::filesystem::path& dataPath)
     return false;
 }
 
-bool envIsSet(const char* name)
+[[maybe_unused]] bool envIsSet(const char* name)
 {
     const char* value = std::getenv(name);
     return value && value[0] != '\0';
+}
+
+// Repo checkout has CMakeLists.txt / AGENTS.md beside config/; flutter run
+// also installs a stale copy under flutter/build/.../config/xml.
+bool looksLikeSourceTreeXmlDataPath(const std::filesystem::path& dataPath)
+{
+    const std::filesystem::path repoRoot = dataPath.parent_path().parent_path();
+    std::error_code ec;
+    return std::filesystem::is_regular_file(repoRoot / "CMakeLists.txt", ec) ||
+           std::filesystem::is_regular_file(repoRoot / "AGENTS.md", ec);
+}
+
+std::optional<std::filesystem::path> pickPreferredXmlDataPath(
+    const std::vector<std::filesystem::path>& hits)
+{
+    for (const auto& hit : hits) {
+        if (looksLikeSourceTreeXmlDataPath(hit)) {
+            return hit;
+        }
+    }
+    if (!hits.empty()) {
+        return hits.front();
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -88,10 +112,12 @@ std::optional<std::filesystem::path> findRepositoryXmlDataPath(
         candidates.push_back(dir / "config" / "xml");
     }
 
+    std::vector<std::filesystem::path> hits;
+    hits.reserve(candidates.size());
     for (const auto& candidate : candidates) {
         if (xmlDataPathContainsLocalDrivers(candidate)) {
-            return candidate;
+            hits.push_back(candidate);
         }
     }
-    return std::nullopt;
+    return pickPreferredXmlDataPath(hits);
 }
