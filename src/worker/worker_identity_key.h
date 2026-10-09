@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Yink Studio contributors
+
 #pragma once
 
 // 构建时生成：worker Ed25519 身份密钥（raw private 与同源 raw public）。

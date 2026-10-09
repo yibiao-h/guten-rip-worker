@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Yink Studio contributors
+
 #include "xml_data_path.h"
 
 #include <cstdlib>

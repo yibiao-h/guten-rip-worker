@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: Yink Studio contributors
+
 cmake_minimum_required(VERSION 3.27)
 
 option(BUILD_RIP_WORKER "Build the gRPC Gutenprint worker when dependencies are available" ON)

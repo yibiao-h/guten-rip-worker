@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: Yink Studio contributors
+
+# Preserve the original license bytes on every platform.
+LICENSES/GPL-3.0-or-later.txt -text
+LICENSES/MIT.txt -text

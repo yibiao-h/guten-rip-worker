@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: Yink Studio contributors
+
 find_package(Protobuf CONFIG QUIET)
 find_package(gRPC CONFIG QUIET)
 find_package(Threads REQUIRED)

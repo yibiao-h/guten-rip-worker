@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Yink Studio contributors
+
 #pragma once
 
 #include "rip_worker.grpc.pb.h"

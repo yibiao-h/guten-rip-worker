@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Yink Studio contributors
+
 #include "rip_worker_service.h"
 
 #include "ed25519_sign.h"
