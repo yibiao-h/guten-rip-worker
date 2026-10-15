@@ -60,6 +60,10 @@ int main(int argc, char** argv)
     grpc::ServerBuilder builder;
     builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, kMaxGrpcMessageBytes);
     builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, kMaxGrpcMessageBytes);
+#if !defined(_WIN32)
+    // A client must never share a listener with a different worker's XML state.
+    builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+#endif
     builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
 
